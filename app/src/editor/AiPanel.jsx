@@ -22,6 +22,18 @@ export default function AiPanel({ editor, dispatch }) {
   const [quota, setQuota] = useState(null);
   const recRef = useRef(null);
 
+  // Optional details we ASK the user for, to fill the gaps the AI would
+  // otherwise guess at. Blank = let the AI decide / use a sensible default.
+  const [showDetails, setShowDetails] = useState(false);
+  const [refNo, setRefNo] = useState("");
+  const [docDate, setDocDate] = useState("");
+  const [trn, setTrn] = useState("");
+  const [vat, setVat] = useState(true);
+  const [payment, setPayment] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const moneyDoc = docType !== "letter";
+
   useEffect(() => {
     if (!signedIn) { setQuota(null); return; }
     getQuota().then(setQuota);
@@ -70,7 +82,15 @@ export default function AiPanel({ editor, dispatch }) {
         return;
       }
       setQuota(after);
-      const ai = await generateDocument({ brief, docType, company: editor.letterhead.name });
+      const fields = {
+        refNo: refNo.trim(),
+        date: docDate.trim(),
+        trn: trn.trim(),
+        vat: moneyDoc ? vat : false,
+        payment: payment.trim(),
+        notes: notes.trim(),
+      };
+      const ai = await generateDocument({ brief, docType, company: editor.letterhead.name, fields });
       const els = aiBlocksToElements(ai, editor.letterhead);
       if (mode === "replace") dispatch({ type: "SET_ELEMENTS", elements: els });
       else dispatch({ type: "SET_ELEMENTS", elements: [...editor.elements, ...els] });
@@ -130,6 +150,76 @@ export default function AiPanel({ editor, dispatch }) {
           </button>
         )}
       </div>
+
+      <button
+        type="button"
+        onClick={() => setShowDetails((v) => !v)}
+        className="flex w-full items-center justify-between rounded border border-hairline bg-white px-2 py-1.5 text-[12px] font-medium text-navy/80 hover:bg-navy/5"
+      >
+        <span>Details {(refNo || docDate || trn || payment || notes) ? "•" : "(optional)"}</span>
+        <span className="text-navy/40">{showDetails ? "▾" : "▸"}</span>
+      </button>
+
+      {showDetails && (
+        <div className="space-y-2 rounded-md border border-hairline bg-navy/[0.02] p-2">
+          <p className="text-[11px] text-navy/50">
+            Leave any field blank and AI fills it sensibly. Anything you enter is used exactly.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="mb-0.5 block text-[11px] text-navy/60">{moneyDoc ? "Doc / Invoice no." : "Reference no."}</span>
+              <input
+                value={refNo}
+                onChange={(e) => setRefNo(e.target.value)}
+                placeholder="Auto"
+                className="w-full rounded border border-hairline bg-white px-2 py-1 text-[13px] text-navy outline-none focus:border-brass"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-0.5 block text-[11px] text-navy/60">Date</span>
+              <input
+                value={docDate}
+                onChange={(e) => setDocDate(e.target.value)}
+                placeholder="Today"
+                className="w-full rounded border border-hairline bg-white px-2 py-1 text-[13px] text-navy outline-none focus:border-brass"
+              />
+            </label>
+          </div>
+          <label className="block">
+            <span className="mb-0.5 block text-[11px] text-navy/60">TRN / Tax number</span>
+            <input
+              value={trn}
+              onChange={(e) => setTrn(e.target.value)}
+              placeholder="None — won't be invented"
+              className="w-full rounded border border-hairline bg-white px-2 py-1 text-[13px] text-navy outline-none focus:border-brass"
+            />
+          </label>
+          {moneyDoc && (
+            <label className="flex items-center gap-2 text-[12px] text-navy/75">
+              <input type="checkbox" checked={vat} onChange={(e) => setVat(e.target.checked)} className="accent-brass" />
+              Add UAE VAT 5% (subtotal, VAT, total)
+            </label>
+          )}
+          <label className="block">
+            <span className="mb-0.5 block text-[11px] text-navy/60">Payment / bank details</span>
+            <input
+              value={payment}
+              onChange={(e) => setPayment(e.target.value)}
+              placeholder="Optional — shown verbatim"
+              className="w-full rounded border border-hairline bg-white px-2 py-1 text-[13px] text-navy outline-none focus:border-brass"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-0.5 block text-[11px] text-navy/60">Notes / terms</span>
+            <input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Optional — e.g. valid 30 days"
+              className="w-full rounded border border-hairline bg-white px-2 py-1 text-[13px] text-navy outline-none focus:border-brass"
+            />
+          </label>
+        </div>
+      )}
 
       {err && <p className="text-xs text-red-600">{err}</p>}
 

@@ -29,8 +29,36 @@ const DOC_LABEL: Record<string, string> = {
   letter: "Letter / official correspondence",
 };
 
-function buildPrompt(brief: string, docType: string, company: string) {
+type Fields = {
+  refNo?: string;
+  date?: string;
+  trn?: string;
+  vat?: boolean | string;
+  currency?: string;
+  payment?: string;
+  notes?: string;
+};
+
+function fieldsBlock(f: Fields) {
+  const lines: string[] = [];
+  if (f.refNo) lines.push(`- Document number to USE EXACTLY: "${f.refNo}".`);
+  else lines.push(`- No number given: invent a realistic sequential one for this doc type.`);
+  if (f.date) lines.push(`- Date to USE EXACTLY: "${f.date}".`);
+  else lines.push(`- No date given: use today's date in DD / MM / YYYY.`);
+  if (f.trn) lines.push(`- Company TRN to show under the title or in a line: "${f.trn}".`);
+  else lines.push(`- No TRN given: DO NOT invent one.`);
+  const wantVat = f.vat === true || f.vat === "true" || f.vat === "yes";
+  if (wantVat) lines.push(`- Apply UAE VAT at 5%: add Subtotal, VAT 5%, and Grand Total rows.`);
+  else lines.push(`- Do NOT add VAT unless the brief explicitly mentions it.`);
+  if (f.currency) lines.push(`- Use "${f.currency}" as the currency.`);
+  if (f.payment) lines.push(`- Include these payment / bank details verbatim as a short block: "${f.payment}".`);
+  if (f.notes) lines.push(`- Include this note/terms text: "${f.notes}".`);
+  return lines.join("\n");
+}
+
+function buildPrompt(brief: string, docType: string, company: string, fields: Fields) {
   const label = DOC_LABEL[docType] || "business document";
+  const cur = fields.currency || "AED";
   return `You are an experienced corporate document writer for a UAE company.
 Write the BODY CONTENT for a ${label} that will be printed on the company's EXISTING
 printed letterhead. The letterhead already shows the company logo, name, address,
@@ -42,10 +70,26 @@ Company (for tone/signature only): ${company || "the company"}.
 Brief from the user (may be rough/typo'd — interpret intent):
 """${brief}"""
 
-Write clean, professional, human wording. Concise. Use AED for currency. Use realistic
-UAE business phrasing. If the brief implies amounts or items, lay them out as readable
-lines. If it's a letter, write proper paragraphs. Do not invent sensitive data (TRN,
-bank, license) unless given in the brief.
+INFER THE INDUSTRY from the company name and the brief, then make the content
+specific and believable for that industry — never generic placeholders. Examples:
+- An auto / car services company → line items like "Engine oil & filter change",
+  "Brake pad replacement", "Wheel alignment", "Diagnostics", labour vs parts.
+- A catering / food company → meal boxes, per-day delivery, headcount.
+- A cleaning company → man-hours, frequency, areas covered.
+- A trading company → product SKUs, quantities, unit prices.
+Use real-sounding descriptions, sensible quantities and ${cur} prices that add up
+correctly. Write the kind of wording a professional in that field would actually use.
+
+FILL THE PAGE PROPERLY. A near-empty page looks unprofessional. Produce enough
+substance to occupy a full A4 body: an opening line, the table/breakdown, and then
+the appropriate supporting blocks (payment terms, validity, thank-you / confirmation
+line, signature). Aim for a complete, balanced document — not one short table.
+
+Field instructions (follow exactly):
+${fieldsBlock(fields)}
+
+Write clean, professional, human wording. Use ${cur} for currency. Realistic UAE
+business phrasing.
 
 Return ONLY JSON in exactly this shape:
 {
@@ -56,19 +100,23 @@ Return ONLY JSON in exactly this shape:
   ]
 }
 Rules:
-- "ref" e.g. "Ref: Q-2026-001" (make a sensible number if not given).
-- "date" e.g. "Date: <today or given>".
-- "recipient" the addressee block (multi-line ok using \\n).
+- "ref" e.g. "Ref: ${fields.refNo || "Q-2026-001"}" (use the number rule above).
+- "date" e.g. "Date: <per rule above>".
+- "recipient" the addressee block (multi-line ok using \\n). If a client is named in
+  the brief, address it to them; otherwise a believable client for that industry.
 - "subheading" optional one-line subject/summary.
-- "paragraph" normal text; multiple allowed.
-- "bullet" one item per block (no dash, just the text).
-- "table" for ANY pricing, line items, or breakdown. Right-align numeric columns. Final TOTAL row inside the rows. Thousands separators + 2 decimals.
+- "paragraph" normal text; multiple allowed. Use for opening line, payment terms,
+  validity, notes, and a confirmation/thank-you line.
+- "bullet" one item per block (no dash, just the text). Good for terms & conditions.
+- "table" for ANY pricing, line items, or breakdown. Right-align numeric columns.
+  Final TOTAL row(s) inside the rows. Thousands separators + 2 decimals.
 - "signoff" closing like "Yours sincerely," or "We look forward to your confirmation.".
 - "signature_name" / "signature_title".
-For an invoice/quotation: include a "table" with line items + totals.
+For an invoice/quotation/proforma: include a "table" with line items + totals.
+For a statement of account: a "table" of transactions with a running/closing balance.
 For a salary certificate: a "table" with the salary breakdown.
-For a plain letter: no table.
-Order blocks top-to-bottom. Keep it tight and well-spaced.`;
+For a plain letter: no table — proper paragraphs.
+Order blocks top-to-bottom.`;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -80,13 +128,13 @@ Deno.serve(async (req) => {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) return new Response(JSON.stringify({ error: "AI is not configured (GEMINI_API_KEY missing)." }), { status: 500, headers: CORS });
 
-  let body: { brief?: string; docType?: string; company?: string } = {};
+  let body: { brief?: string; docType?: string; company?: string; fields?: Fields } = {};
   try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: "Bad request body." }), { status: 400, headers: CORS }); }
-  const { brief = "", docType = "letter", company = "" } = body;
+  const { brief = "", docType = "letter", company = "", fields = {} } = body;
   if (!brief.trim()) return new Response(JSON.stringify({ error: "Describe what to write first." }), { status: 400, headers: CORS });
 
   const payload = {
-    contents: [{ parts: [{ text: buildPrompt(brief, docType, company) }] }],
+    contents: [{ parts: [{ text: buildPrompt(brief, docType, company, fields) }] }],
     generationConfig: { temperature: 0.4, responseMimeType: "application/json" },
   };
 
