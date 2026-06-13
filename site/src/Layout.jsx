@@ -106,8 +106,10 @@ function Footer() {
       </div>
       <div className="border-t border-hairline">
         <div className="mx-auto flex max-w-6xl flex-col justify-between gap-2 px-5 py-5 text-xs text-ink/45 sm:flex-row">
-          <span>© {new Date().getFullYear()} Letterhead Studio</span>
-          <span>Made in Dubai · Runs in your browser</span>
+          <span>© {new Date().getFullYear()} Letterhead Studio · Built by Faiz Mustafa</span>
+          <span>Dubai, U.A.E ·
+            <a href="https://wa.me/971502925963" target="_blank" rel="noopener noreferrer" className="ml-1 hover:text-ink">WhatsApp +971 50 292 5963</a>
+          </span>
         </div>
       </div>
     </footer>

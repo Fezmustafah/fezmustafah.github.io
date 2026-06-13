@@ -1,6 +1,15 @@
 import { Check, ArrowRight, Sparkles } from "lucide-react";
 import { PageHeader, CTA, useReveal, APP_URL } from "../sections.jsx";
 
+// WhatsApp the founder (Faiz Mustafa, Dubai) with a plan-specific message so we
+// see context in the first reply.
+const WA_NUMBER = "971502925963";
+const wa = (msg) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
+const PRO_MSG =
+  "Hello, I'm interested in the Pro plan ($9 / month) — unlimited AI generations, unlimited letterheads & layouts, stamp library, priority AI model, brand kits for multiple companies, export to PNG, and email support.";
+const BIZ_MSG =
+  "Hello, I'd like to talk about the Business plan ($29 / month) — everything in Pro plus team workspaces (5 seats), role-based access, WhatsApp integration, custom domain on documents, and priority support.";
+
 const TIERS = [
   {
     name: "Free",
@@ -22,8 +31,8 @@ const TIERS = [
     name: "Pro",
     price: "9",
     blurb: "For freelancers & small teams shipping daily.",
-    cta: "Coming soon",
-    href: "#",
+    cta: "Buy on WhatsApp",
+    href: wa(PRO_MSG),
     highlight: true,
     features: [
       "Unlimited AI generations",
@@ -39,8 +48,8 @@ const TIERS = [
     name: "Business",
     price: "29",
     blurb: "Teams, multiple brands, advanced control.",
-    cta: "Talk to us",
-    href: "/contact",
+    cta: "Talk on WhatsApp",
+    href: wa(BIZ_MSG),
     highlight: false,
     features: [
       "Everything in Pro",
@@ -67,7 +76,12 @@ function Tier({ t }) {
         <span className="display text-5xl font-extrabold text-ink">${t.price}</span>
         <span className="text-sm text-ink/55">/ month</span>
       </div>
-      <a href={t.href} className={"mt-6 " + (t.highlight ? "btn-primary justify-center" : "btn-ghost justify-center")}>
+      <a
+        href={t.href}
+        target={t.href.startsWith("http") ? "_blank" : undefined}
+        rel={t.href.startsWith("http") ? "noopener noreferrer" : undefined}
+        className={"mt-6 " + (t.highlight ? "btn-primary justify-center" : "btn-ghost justify-center")}
+      >
         {t.cta} <ArrowRight size={16} />
       </a>
       <ul className="mt-7 space-y-2.5">
