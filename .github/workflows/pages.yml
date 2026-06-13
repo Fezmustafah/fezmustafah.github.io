@@ -1,0 +1,77 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            app/package-lock.json
+            site/package-lock.json
+
+      # ---------- build the marketing landing (root of Pages) ----------
+      - name: Install site
+        working-directory: site
+        run: npm ci
+      - name: Build site
+        working-directory: site
+        env:
+          # Pages serves project sites at /<repo>/  — Vite needs the matching base
+          BASE_PATH: /Document-maker/
+        run: npm run build -- --base=${BASE_PATH}
+
+      # ---------- build the app (served at /app/) ----------
+      - name: Install app
+        working-directory: app
+        run: npm ci
+      - name: Build app
+        working-directory: app
+        env:
+          BASE_PATH: /Document-maker/app/
+        run: npm run build -- --base=${BASE_PATH}
+
+      # ---------- combine: site at root, app under /app ----------
+      - name: Combine outputs
+        run: |
+          mkdir -p public
+          cp -r site/dist/* public/
+          mkdir -p public/app
+          cp -r app/dist/* public/app/
+          # SPA fallback: route every unknown URL through index.html
+          cp public/index.html public/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -2,7 +2,15 @@ import { useEffect, useState } from "react";
 import { NavLink, Link, Outlet, useLocation } from "react-router-dom";
 import { Menu, X, ArrowRight, FileSignature } from "lucide-react";
 
-export const APP_URL = "https://letterhead-studio-1962.netlify.app";
+// Same-host link: under GH Pages the app lives at <base>/app, locally just /app.
+// Avoids hardcoding a hosting provider so we can swap Netlify → Pages cleanly.
+export const APP_URL = (() => {
+  if (typeof window === "undefined") return "/app/";
+  const path = window.location.pathname.replace(/\/$/, "");
+  // strip "/index.html" etc but keep repo base
+  const base = path.split("/").slice(0, -1).join("/") || "";
+  return (base || "") + "/app/";
+})();
 
 export function Logo() {
   return (

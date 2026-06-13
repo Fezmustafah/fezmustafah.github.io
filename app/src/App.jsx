@@ -9,6 +9,8 @@ import EditorLetterheads from "./editor/EditorLetterheads.jsx";
 import EditorPresets from "./editor/EditorPresets.jsx";
 import StampStudio from "./editor/StampStudio.jsx";
 import AiPanel from "./editor/AiPanel.jsx";
+import MobileShell from "./editor/MobileShell.jsx";
+import { useViewport } from "./editor/useViewport.js";
 import AuthBar from "./auth/AuthBar.jsx";
 import { useAuth } from "./auth/AuthProvider.jsx";
 
@@ -74,6 +76,44 @@ export default function App() {
   }
   function preview() {
     window.open(exportEditorPdf(editor).output("bloburl"), "_blank");
+  }
+
+  const vp = useViewport();
+
+  // shared margin + accent controls (used by desktop sidebar AND mobile sheet)
+  const MarginControls = () => (
+    <div className="space-y-2">
+      <Slider label="Header zone" value={lh.marginTop} min={10} max={120} onChange={(v) => setLh({ marginTop: v })} />
+      <Slider label="Footer zone" value={lh.marginBottom} min={10} max={80} onChange={(v) => setLh({ marginBottom: v })} />
+      <Slider label="Side" value={lh.marginSide} min={8} max={40} onChange={(v) => setLh({ marginSide: v })} />
+    </div>
+  );
+  const AccentInput = () => (
+    <label className="flex items-center gap-2 text-xs text-navy/60">
+      <span className="w-16 font-semibold uppercase tracking-wide">Accent</span>
+      <input type="color" value={lh.accent} onChange={(e) => setLh({ accent: e.target.value })} className="h-6 w-9 rounded border border-hairline" />
+      <span className="tabular-nums">{lh.accent}</span>
+    </label>
+  );
+
+  if (vp.isMobile) {
+    return (
+      <>
+        <MobileShell
+          editor={editor} dispatch={dispatch}
+          AiPanel={AiPanel} Inspector={Inspector}
+          EditorLetterheads={EditorLetterheads} EditorPresets={EditorPresets}
+          AuthBar={AuthBar} onAuthChange={() => setRefreshKey((k) => k + 1)}
+          storeKey={storeKey}
+          onPreview={preview} onDownload={download}
+          onAddText={addText} onAddTable={addTable} onAddLine={addLine}
+          onOpenStamp={() => setStampOpen(true)}
+          onLoadTemplate={loadTemplate} templates={TEMPLATE_LIST}
+          MarginControls={MarginControls} AccentInput={AccentInput}
+        />
+        {stampOpen && <StampStudio editor={editor} dispatch={dispatch} onClose={() => setStampOpen(false)} />}
+      </>
+    );
   }
 
   return (

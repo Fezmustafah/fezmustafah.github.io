@@ -2,20 +2,19 @@
 // content blocks into positioned canvas elements.
 import { makeText, makeRule, makeTable, A4 } from "../editor/model.js";
 
-// In prod the function is same-origin. On localhost we call the deployed site
-// (the function sends permissive CORS) so the AI works during local dev too.
-function endpoint() {
-  const host = window.location.hostname;
-  const base = host === "localhost" || host === "127.0.0.1"
-    ? "https://letterhead-studio-1962.netlify.app"
-    : "";
-  return `${base}/.netlify/functions/generate`;
-}
+// Talks to the Supabase Edge Function (Deno). One endpoint for local + prod.
+// The anon key is required by Supabase's gateway even for unauthenticated calls.
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export async function generateDocument({ brief, docType, company }) {
-  const res = await fetch(endpoint(), {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/generate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_ANON,
+      Authorization: `Bearer ${SUPABASE_ANON}`,
+    },
     body: JSON.stringify({ brief, docType, company }),
   });
   const data = await res.json().catch(() => ({}));

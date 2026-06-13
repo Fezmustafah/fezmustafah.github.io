@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/><title>Letterhead Studio</title>
+<script>
+// GH Pages SPA fallback: rewrite /pathname → /?p=pathname so index.html can
+// restore the route. Harmless on root paths.
+(function () {
+  var l = window.location;
+  l.replace(l.pathname.split('/').slice(0,2).join('/') + '/?p=' + encodeURIComponent(l.pathname + l.search + l.hash));
+})();
+</script></head><body></body></html>

@@ -5,7 +5,7 @@ import { PXPM, PT_PER_MM } from "./model.js";
 
 const pxFont = (pt) => (pt * PXPM) / PT_PER_MM;
 
-export default function ElementBox({ el, selected, dispatch }) {
+export default function ElementBox({ el, selected, dispatch, scale = 1 }) {
   const [editing, setEditing] = useState(false);
   const drag = useRef(null);
 
@@ -17,6 +17,9 @@ export default function ElementBox({ el, selected, dispatch }) {
   const left = el.xMm * PXPM;
   const top = el.yMm * PXPM;
   const width = el.wMm * PXPM;
+  // pointer deltas are in CSS px (the *scaled* visual). Divide by (PXPM * scale)
+  // so 1 finger-px of movement = 1 visual-px of movement regardless of zoom.
+  const PXMM = PXPM * scale;
 
   function startDrag(e) {
     if (editing) return;
@@ -27,8 +30,8 @@ export default function ElementBox({ el, selected, dispatch }) {
   }
   function onMove(e) {
     if (!drag.current) return;
-    const dx = (e.clientX - drag.current.px) / PXPM;
-    const dy = (e.clientY - drag.current.py) / PXPM;
+    const dx = (e.clientX - drag.current.px) / PXMM;
+    const dy = (e.clientY - drag.current.py) / PXMM;
     dispatch({ type: "MOVE", id: el.id, xMm: drag.current.x0 + dx, yMm: drag.current.y0 + dy });
   }
   function endDrag(e) {
@@ -41,7 +44,7 @@ export default function ElementBox({ el, selected, dispatch }) {
     const px = e.clientX;
     const w0 = el.wMm;
     const move = (ev) => {
-      const w = Math.max(12, w0 + (ev.clientX - px) / PXPM);
+      const w = Math.max(12, w0 + (ev.clientX - px) / PXMM);
       dispatch({ type: "UPDATE", id: el.id, patch: { wMm: w } });
     };
     const up = () => {
