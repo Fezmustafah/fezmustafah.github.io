@@ -1,12 +1,14 @@
 # Letterhead Studio
 
+### 🔗 Live: **https://fezmustafah.github.io/**
+
 AI-powered document studio. Upload your company letterhead, describe what you
 need in plain words (or by voice), and the tool writes a print-ready PDF —
 quotation, invoice, salary certificate, letter — on top of your letterhead.
 
 Live:
-- **App:** https://letterhead-studio-1962.netlify.app
-- **Site:** https://letterhead-studio-site-1106.netlify.app
+- **Main site:** https://fezmustafah.github.io/
+- **Studio (app):** https://fezmustafah.github.io/app/
 
 ## Structure (monorepo)
 
@@ -25,9 +27,9 @@ Both deploy independently as static Vite builds.
 | PDF | jsPDF + jspdf-autotable |
 | Local store | idb-keyval (IndexedDB) |
 | Auth + cloud | Supabase (email + Google OAuth) |
-| AI | Google Gemini via a Netlify Function |
+| AI | Google Gemini via a Supabase Edge Function |
 | Voice | Web Speech API |
-| Hosting | Netlify (both sites) |
+| Hosting | GitHub Pages (user site at root + `/app/`) |
 
 ## Develop
 
