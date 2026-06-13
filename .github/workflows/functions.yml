@@ -1,0 +1,35 @@
+name: Deploy Supabase Functions
+
+# Runs only when the edge-function code changes, so a normal site edit doesn't
+# redeploy the function. One `git push` now ships both the site (pages.yml) and
+# the AI generator (this file).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/supabase/functions/**"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy generate function
+        working-directory: app
+        env:
+          # Add this in: repo Settings → Secrets and variables → Actions.
+          # Get the token at https://supabase.com/dashboard/account/tokens
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          # Reuse the URL secret already configured for the site build.
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+        run: |
+          # project ref is the subdomain of the Supabase URL
+          REF=$(echo "$SUPABASE_URL" | sed -E 's#https?://([^.]+)\..*#\1#')
+          echo "Deploying to project: $REF"
+          supabase functions deploy generate --project-ref "$REF"
