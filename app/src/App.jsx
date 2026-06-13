@@ -15,17 +15,49 @@ import { useViewport } from "./editor/useViewport.js";
 import AuthBar from "./auth/AuthBar.jsx";
 import { useAuth } from "./auth/AuthProvider.jsx";
 
-function Panel({ title, children, right, accent }) {
+// Flat, borderless section — modern editor feel (no boxed "panels").
+function Group({ title, icon, right, children }) {
   return (
-    <section className={"rounded-xl border bg-white p-3.5 shadow-card " + (accent ? "border-brass/40 ring-1 ring-brass/10" : "border-hairline")}>
+    <section>
       <div className="mb-2.5 flex items-center justify-between">
-        <h2 className={"label " + (accent ? "text-brass" : "text-navy/55")}>{title}</h2>
+        <h2 className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate/70">
+          {icon && <span className="text-brass">{icon}</span>}
+          {title}
+        </h2>
         {right}
       </div>
       {children}
     </section>
   );
 }
+
+function ToolChip({ icon, label, onClick, accent }) {
+  return (
+    <button
+      onClick={onClick}
+      className={
+        "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition " +
+        (accent
+          ? "border-brass/30 bg-brass/[0.06] text-navy hover:bg-brass/10"
+          : "border-black/[0.06] bg-[#f6f7f9] text-navy hover:bg-[#eef0f3]")
+      }
+    >
+      <span className="text-slate">{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+/* minimal inline icons (no icon lib in the app bundle) */
+const I = {
+  text: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 7V5h16v2M9 5v14M7 19h4" /></svg>,
+  table: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M9 4v16" /></svg>,
+  line: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 12h16" /></svg>,
+  stamp: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 21h14M9 8a3 3 0 1 1 6 0c0 2-2 3-2 5h-2c0-2-2-3-2-5Z" /><path d="M7 17h10v-2H7z" /></svg>,
+  spark: <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 5.6L19 9l-5.2 1.4L12 16l-1.8-5.6L5 9l5.2-1.4z" /></svg>,
+  download: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" /></svg>,
+  eye: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>,
+};
 
 function Mark() {
   return (
@@ -126,108 +158,116 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-paper">
-      <header className="glass flex items-center justify-between border-b border-hairline px-5 py-2.5">
-        <div className="flex items-center gap-3">
+    <div className="flex h-screen flex-col bg-[#e9ebef] text-navy">
+      <header className="z-20 flex h-14 shrink-0 items-center justify-between border-b border-black/[0.06] bg-white/90 px-4 backdrop-blur">
+        <div className="flex items-center gap-2.5">
           <Mark />
-          <div>
-            <h1 className="font-display text-[17px] font-extrabold leading-none tracking-tightest text-navy">Letterhead Studio</h1>
-            <p className="mt-0.5 text-[11px] text-navy/45">Describe it, or drop blocks — on your own letterhead.</p>
+          <div className="leading-none">
+            <h1 className="font-display text-[15px] font-extrabold tracking-tightest text-navy">Letterhead Studio</h1>
+            <p className="mt-1 text-[11px] text-slate/80">Describe it, or drop blocks — on your letterhead.</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button onClick={() => setShowTutorial(true)} title="How it works"
-            className="grid h-7 w-7 place-items-center rounded-full border border-hairline text-sm font-semibold text-navy/60 hover:border-brass hover:text-navy">?</button>
+            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-slate hover:bg-black/[0.04]">
+            <span className="grid h-5 w-5 place-items-center rounded-full bg-[#f0f1f4] text-xs">?</span> Guide
+          </button>
           <AuthBar onAuthChange={() => setRefreshKey((k) => k + 1)} onSignup={() => setShowTutorial(true)} />
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
         {/* ---- left: editing tools ---- */}
-        <aside className="w-[300px] shrink-0 space-y-3 overflow-auto border-r border-hairline bg-white/40 p-3">
+        <aside className="w-[300px] shrink-0 space-y-6 overflow-auto border-r border-black/[0.06] bg-white p-4">
           {editor.selectedId && (
-            <Panel title="Selected block" accent>
-              <Inspector editor={editor} dispatch={dispatch} />
-            </Panel>
+            <div className="rounded-2xl bg-[#f6f7f9] p-3.5 ring-1 ring-black/[0.05]">
+              <Group title="Selected block" icon={I.spark}>
+                <Inspector editor={editor} dispatch={dispatch} />
+              </Group>
+            </div>
           )}
 
-          <Panel title="✦ Write with AI" accent>
+          <Group title="Write with AI" icon={I.spark}>
             <AiPanel editor={editor} dispatch={dispatch} />
-          </Panel>
+          </Group>
 
-          <Panel title="Choose what it is">
+          <Group title="Add to the page">
+            <div className="grid grid-cols-2 gap-2">
+              <ToolChip icon={I.text} label="Text" onClick={addText} />
+              <ToolChip icon={I.table} label="Table" onClick={addTable} />
+              <ToolChip icon={I.line} label="Line" onClick={addLine} />
+              <ToolChip icon={I.stamp} label="Sign / Stamp" onClick={() => setStampOpen(true)} accent />
+            </div>
+          </Group>
+
+          <Group title="Start as">
             <div className="flex flex-wrap gap-2">
               {TEMPLATE_LIST.map((t) => (
-                <button key={t.id} onClick={() => loadTemplate(t.id)} className="rounded border border-hairline px-2.5 py-1 text-xs text-navy hover:border-brass">{t.label}</button>
+                <button key={t.id} onClick={() => loadTemplate(t.id)}
+                  className="rounded-full bg-[#f6f7f9] px-3 py-1.5 text-xs font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
+                  {t.label}
+                </button>
               ))}
             </div>
-          </Panel>
+          </Group>
 
-          <Panel title="Add block">
-            <div className="flex flex-wrap gap-2">
-              <button onClick={addText} className="rounded border border-navy px-2.5 py-1 text-xs text-navy hover:bg-navy hover:text-paper">+ Text</button>
-              <button onClick={addTable} className="rounded border border-navy px-2.5 py-1 text-xs text-navy hover:bg-navy hover:text-paper">+ Table</button>
-              <button onClick={addLine} className="rounded border border-navy px-2.5 py-1 text-xs text-navy hover:bg-navy hover:text-paper">+ Line</button>
-              <button onClick={() => setStampOpen(true)} className="rounded border border-brass bg-brass/10 px-2.5 py-1 text-xs text-navy hover:bg-brass hover:text-white">+ Sign / Stamp</button>
-            </div>
-          </Panel>
-
-          <Panel title="Letterhead" right={
-            <label className="flex items-center gap-1 text-[10px] text-navy/60">
-              <input type="checkbox" checked={editor.showGuides} onChange={() => dispatch({ type: "TOGGLE_GUIDES" })} /> guides
-            </label>
+          <Group title="Letterhead" right={
+            <button onClick={() => dispatch({ type: "TOGGLE_GUIDES" })}
+              className={"rounded-full px-2 py-0.5 text-[10px] font-semibold transition " + (editor.showGuides ? "bg-navy text-paper" : "bg-[#f0f1f4] text-slate")}>
+              guides
+            </button>
           }>
             <EditorLetterheads key={"lh:" + storeKey} editor={editor} dispatch={dispatch} />
-            <div className="mt-3 space-y-2 border-t border-hairline pt-2">
+            <div className="mt-3 space-y-2.5">
               <Slider label="Header zone" value={lh.marginTop} min={10} max={120} onChange={(v) => setLh({ marginTop: v })} />
               <Slider label="Footer zone" value={lh.marginBottom} min={10} max={80} onChange={(v) => setLh({ marginBottom: v })} />
               <Slider label="Side" value={lh.marginSide} min={8} max={40} onChange={(v) => setLh({ marginSide: v })} />
-              <label className="flex items-center gap-2 text-xs text-navy/60">
+              <label className="flex items-center gap-2 pt-1 text-xs text-slate">
                 <span className="w-16 font-semibold uppercase tracking-wide">Accent</span>
-                <input type="color" value={lh.accent} onChange={(e) => setLh({ accent: e.target.value })} className="h-6 w-9 rounded border border-hairline" />
-                <span className="tabular-nums">{lh.accent}</span>
+                <input type="color" value={lh.accent} onChange={(e) => setLh({ accent: e.target.value })} className="h-7 w-9 cursor-pointer rounded-lg border-0 bg-transparent p-0" />
+                <span className="tabular-nums text-slate/70">{lh.accent}</span>
               </label>
             </div>
-          </Panel>
+          </Group>
 
-          <Panel title="Saved layouts">
+          <Group title="Saved layouts">
             <EditorPresets key={"pr:" + storeKey} editor={editor} dispatch={dispatch} />
-          </Panel>
+          </Group>
         </aside>
 
         {/* ---- center: canvas (scales to fill the workspace) ---- */}
         <FitCanvas editor={editor} dispatch={dispatch} />
 
         {/* ---- right: document / export ---- */}
-        <aside className="w-[280px] shrink-0 space-y-3 overflow-auto border-l border-hairline bg-white/40 p-3">
-          <Panel title="Document">
-            <label className="block text-xs text-navy/60">
-              <span className="font-semibold uppercase tracking-wide">File name</span>
+        <aside className="flex w-[296px] shrink-0 flex-col space-y-6 overflow-auto border-l border-black/[0.06] bg-white p-4">
+          <Group title="Export">
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate/70">File name</span>
               <input
                 value={lh.name}
                 onChange={(e) => setLh({ name: e.target.value })}
                 placeholder="Document"
-                className="mt-1 w-full rounded border border-hairline px-2 py-1.5 text-sm text-navy outline-none focus:border-brass"
+                className="w-full rounded-xl bg-[#f6f7f9] px-3 py-2.5 text-sm text-navy outline-none ring-1 ring-black/[0.05] transition focus:bg-white focus:ring-2 focus:ring-brass/50"
               />
             </label>
             <div className="mt-3 space-y-2">
-              <button onClick={download} className="btn-primary w-full justify-center">Download PDF</button>
-              <button onClick={preview} className="btn-ghost w-full justify-center">Preview PDF</button>
+              <button onClick={download} className="btn-primary w-full justify-center py-3">{I.download} Download PDF</button>
+              <button onClick={preview} className="flex w-full items-center justify-center gap-2 rounded-full bg-[#f6f7f9] py-2.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">{I.eye} Preview</button>
             </div>
-            <p className="mt-2 text-[11px] text-navy/40">Exports a print-ready A4 PDF on your letterhead.</p>
-          </Panel>
+            <p className="mt-2.5 text-[11px] leading-relaxed text-slate/70">Print-ready A4 PDF, rendered on your letterhead.</p>
+          </Group>
 
-          <Panel title="Layout">
-            <div className="flex items-center justify-between text-xs text-navy/55">
-              <span>{editor.elements.length} block{editor.elements.length === 1 ? "" : "s"} on the page</span>
+          <Group title="Page">
+            <div className="rounded-xl bg-[#f6f7f9] px-3 py-2.5 text-xs text-slate ring-1 ring-black/[0.05]">
+              <span className="font-semibold text-navy">{editor.elements.length}</span> block{editor.elements.length === 1 ? "" : "s"} placed
             </div>
             <button
               onClick={clearLayout}
-              className="mt-3 w-full rounded border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50"
+              className="mt-2 w-full rounded-xl px-3 py-2 text-sm font-semibold text-red-600 ring-1 ring-red-200 transition hover:bg-red-50"
             >
               Clear page
             </button>
-          </Panel>
+          </Group>
         </aside>
       </div>
 
@@ -263,8 +303,8 @@ function FitCanvas({ editor, dispatch }) {
   return (
     <div
       ref={ref}
-      className="flex flex-1 items-start justify-center overflow-auto p-7"
-      style={{ background: "radial-gradient(1100px 600px at 50% -8%, rgba(169,133,63,0.08), transparent 60%), #e8e4dc" }}
+      className="flex flex-1 items-start justify-center overflow-auto p-8"
+      style={{ background: "radial-gradient(1200px 700px at 50% -12%, rgba(169,133,63,0.06), transparent 55%), #e9ebef" }}
     >
       <Canvas editor={editor} dispatch={dispatch} scale={scale} />
     </div>
@@ -273,12 +313,12 @@ function FitCanvas({ editor, dispatch }) {
 
 function Slider({ label, value, min, max, onChange }) {
   return (
-    <label className="block text-xs text-navy/60">
+    <label className="block text-xs text-slate">
       <span className="flex justify-between">
-        <span className="font-semibold uppercase tracking-wide">{label}</span>
-        <span className="tabular-nums text-navy">{value} mm</span>
+        <span className="font-semibold uppercase tracking-wide text-slate/70">{label}</span>
+        <span className="tabular-nums font-semibold text-navy">{value} mm</span>
       </span>
-      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-brass" />
+      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="mt-1 w-full accent-brass" />
     </label>
   );
 }

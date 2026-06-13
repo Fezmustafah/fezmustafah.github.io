@@ -4,7 +4,7 @@ export default function Inspector({ editor, dispatch }) {
   if (!el) return null;
 
   const set = (patch) => dispatch({ type: "UPDATE", id: el.id, patch });
-  const numBtn = "rounded border border-hairline px-2 py-1 text-sm hover:border-brass";
+  const numBtn = "rounded-lg bg-white px-2 py-1 text-sm text-navy ring-1 ring-black/[0.06] transition hover:bg-[#eef0f3]";
 
   return (
     <div className="space-y-3 text-sm">

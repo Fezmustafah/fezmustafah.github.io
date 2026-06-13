@@ -4,7 +4,7 @@
 // draggable, to prove "every block moves." Pure front-end, no API calls.
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { gsap } from "gsap";
-import { Sparkles, Mic, GripVertical, ArrowUpRight, RotateCcw } from "lucide-react";
+import { Sparkles, Mic, GripVertical, ArrowUpRight, RotateCcw, Play } from "lucide-react";
 import { APP_URL } from "./Layout.jsx";
 
 const PRESETS = {
@@ -62,7 +62,8 @@ function Caret() {
 }
 
 export default function LiveDemo() {
-  const [active, setActive] = useState("quotation");
+  const [idx, setIdx] = useState(0);
+  const [locked, setLocked] = useState(false); // user clicked a doc -> stop the loop
   const [typed, setTyped] = useState("");
   const [phase, setPhase] = useState("idle"); // typing | writing | done
   const [sig, setSig] = useState({ x: 0, y: 0 });
@@ -71,7 +72,9 @@ export default function LiveDemo() {
   const pathRef = useRef(null);
   const dragState = useRef(null);
   const timers = useRef([]);
+  const advTimer = useRef(null);
 
+  const active = ORDER[idx];
   const preset = PRESETS[active];
 
   const clearTimers = () => {
@@ -106,7 +109,29 @@ export default function LiveDemo() {
     run(active);
     return clearTimers;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+  }, [idx]);
+
+  // Auto-advance to the next document a few seconds after one finishes, so the
+  // section plays forever on a loop — unless the user has locked onto one.
+  useEffect(() => {
+    if (advTimer.current) clearTimeout(advTimer.current);
+    if (phase === "done" && !locked) {
+      advTimer.current = setTimeout(() => setIdx((i) => (i + 1) % ORDER.length), 3600);
+    }
+    return () => advTimer.current && clearTimeout(advTimer.current);
+  }, [phase, locked]);
+
+  // Pick a document by hand -> lock the loop on it (replay if it's the same one).
+  const pick = (key) => {
+    const i = ORDER.indexOf(key);
+    setLocked(true);
+    if (i === idx) run(key);
+    else setIdx(i);
+  };
+  const resumeAuto = () => {
+    setLocked(false);
+    setIdx((i) => (i + 1) % ORDER.length);
+  };
 
   // Reveal blocks + draw signature when the document is written.
   useLayoutEffect(() => {
@@ -160,20 +185,31 @@ export default function LiveDemo() {
             Watch a document write itself <span className="flourish font-normal text-brass">onto your letterhead.</span>
           </h2>
           <p className="max-w-sm text-[15px] leading-relaxed text-ink/60">
-            This is the real studio in miniature. Pick a document, watch it build — then drag the signature anywhere.
-            Nothing here is a video.
+            The real studio in miniature, playing on a loop. Click any document to take over — then drag the
+            signature anywhere. Nothing here is a video.
           </p>
         </div>
 
         <div className="mt-10 grid gap-6 lg:grid-cols-[0.82fr_1.18fr]">
           {/* control rail */}
           <div className="rounded-3xl border border-hairline bg-white p-6 shadow-card">
-            <div className="label text-ink/45">1 · Pick a document</div>
+            <div className="flex items-center justify-between">
+              <div className="label text-ink/45">1 · Pick a document</div>
+              {locked ? (
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink/45">
+                  <span className="h-1.5 w-1.5 rounded-full bg-ink/30" /> Paused on your pick
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold text-brass">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brass" /> Auto-playing
+                </span>
+              )}
+            </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {ORDER.map((k) => (
                 <button
                   key={k}
-                  onClick={() => setActive(k)}
+                  onClick={() => pick(k)}
                   className={
                     "rounded-full border px-3.5 py-1.5 text-sm font-medium transition " +
                     (active === k
@@ -217,13 +253,19 @@ export default function LiveDemo() {
               )}
             </div>
 
-            <div className="mt-6 flex items-center gap-3">
+            <div className="mt-6 flex flex-wrap items-center gap-3">
               <a href={APP_URL} className="btn-primary text-sm">
                 Build mine free <ArrowUpRight size={16} />
               </a>
-              <button onClick={() => run(active)} className="btn-ghost text-sm">
-                <RotateCcw size={15} /> Replay
-              </button>
+              {locked ? (
+                <button onClick={resumeAuto} className="btn-ghost text-sm">
+                  <Play size={14} /> Resume auto-play
+                </button>
+              ) : (
+                <button onClick={() => run(active)} className="btn-ghost text-sm">
+                  <RotateCcw size={15} /> Replay
+                </button>
+              )}
             </div>
             <p className="mt-4 text-xs text-ink/40">
               Tip: in the real studio you upload your own letterhead — the AI keeps its margins automatically.
