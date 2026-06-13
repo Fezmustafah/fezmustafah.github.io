@@ -84,6 +84,15 @@ body {
   outline-offset: 2px;
 }
 
+@keyframes lhFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes lhPop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
