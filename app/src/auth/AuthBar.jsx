@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "./AuthProvider.jsx";
-import { migrateLocalToCloud } from "../lib/storage.js";
+import ProfileMenu from "./ProfileMenu.jsx";
 
 export default function AuthBar({ onAuthChange, onSignup }) {
   const auth = useAuth();
@@ -14,18 +14,7 @@ export default function AuthBar({ onAuthChange, onSignup }) {
   }
 
   if (auth.user) {
-    return (
-      <div className="flex items-center gap-2 text-xs">
-        <span className="text-navy/60">{auth.user.email}</span>
-        <SyncButton onDone={onAuthChange} />
-        <button
-          onClick={async () => { await auth.signOut(); onAuthChange?.(); }}
-          className="rounded border border-hairline px-2 py-1 text-navy hover:border-brass"
-        >
-          Sign out
-        </button>
-      </div>
-    );
+    return <ProfileMenu onAuthChange={onAuthChange} />;
   }
 
   return (
@@ -35,24 +24,6 @@ export default function AuthBar({ onAuthChange, onSignup }) {
       </button>
       {open && <AuthModal onClose={() => setOpen(false)} onDone={() => { setOpen(false); onAuthChange?.(); }} onSignup={onSignup} />}
     </>
-  );
-}
-
-function SyncButton({ onDone }) {
-  const [state, setState] = useState("idle");
-  async function run() {
-    setState("running");
-    const res = await migrateLocalToCloud();
-    setState("done");
-    onDone?.();
-    setTimeout(() => setState("idle"), 2500);
-    return res;
-  }
-  return (
-    <button onClick={run} title="Copy letterheads & layouts saved on this device up to your account"
-      className="rounded border border-hairline px-2 py-1 text-navy hover:border-brass">
-      {state === "running" ? "Syncing…" : state === "done" ? "Synced ✓" : "Sync local → cloud"}
-    </button>
   );
 }
 

@@ -17,11 +17,17 @@ export function AuthProvider({ children }) {
       setUser(u);
       setUserId(u?.id || null);
       setReady(true);
+      // after an OAuth redirect, strip ?code= / #access_token from the URL so a
+      // reload doesn't try to re-exchange a spent code.
+      if (u && /[?#].*(code=|access_token=)/.test(window.location.href)) {
+        window.history.replaceState({}, "", window.location.origin + window.location.pathname);
+      }
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       const u = session?.user || null;
       setUser(u);
       setUserId(u?.id || null);
+      setReady(true);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
