@@ -17,17 +17,38 @@ export default function AuthBar({ onAuthChange, onSignup }) {
     return <ProfileMenu onAuthChange={onAuthChange} />;
   }
 
+  if (auth.guest) {
+    return (
+      <>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1.5 rounded-full bg-[#f0f1f4] px-2.5 py-1 text-xs font-semibold text-slate">
+            <span className="h-1.5 w-1.5 rounded-full bg-brass" /> Guest
+          </span>
+          <button onClick={() => setOpen(true)} className="btn-primary text-sm">Sign in to save</button>
+        </div>
+        {open && <AuthModal onClose={() => setOpen(false)} onDone={() => { setOpen(false); auth.exitGuest?.(); onAuthChange?.(); }} onSignup={onSignup} />}
+      </>
+    );
+  }
+
   return (
     <>
       <button onClick={() => setOpen(true)} className="rounded border border-navy px-3 py-1.5 text-sm text-navy hover:bg-navy hover:text-paper">
         Sign in
       </button>
-      {open && <AuthModal onClose={() => setOpen(false)} onDone={() => { setOpen(false); onAuthChange?.(); }} onSignup={onSignup} />}
+      {open && (
+        <AuthModal
+          onClose={() => setOpen(false)}
+          onDone={() => { setOpen(false); onAuthChange?.(); }}
+          onSignup={onSignup}
+          onGuest={() => { auth.continueAsGuest?.(); setOpen(false); onAuthChange?.(); }}
+        />
+      )}
     </>
   );
 }
 
-function AuthModal({ onClose, onDone, onSignup }) {
+function AuthModal({ onClose, onDone, onSignup, onGuest }) {
   const auth = useAuth();
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
@@ -124,6 +145,19 @@ function AuthModal({ onClose, onDone, onSignup }) {
           className="mt-4 w-full text-center text-xs text-navy/60 hover:text-brass">
           {mode === "signin" ? "New here? Create a free account" : "Already have an account? Sign in"}
         </button>
+
+        {onGuest && (
+          <>
+            <div className="my-3 flex items-center gap-3 text-[10px] uppercase tracking-wider text-navy/40">
+              <span className="h-px flex-1 bg-hairline" /> no account? <span className="h-px flex-1 bg-hairline" />
+            </div>
+            <button onClick={onGuest}
+              className="w-full rounded-lg border border-hairline bg-paper/40 px-3 py-2.5 text-sm font-semibold text-navy transition hover:border-brass">
+              Continue as guest — 5 free AI tries
+            </button>
+            <p className="mt-2 text-center text-[11px] text-navy/40">Guest work saves on this device only.</p>
+          </>
+        )}
       </div>
     </div>,
     document.body

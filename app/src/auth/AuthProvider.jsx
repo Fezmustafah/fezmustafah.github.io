@@ -3,12 +3,14 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase, cloudEnabled } from "../lib/supabase.js";
 import { setUserId } from "../lib/authState.js";
+import { isGuest, startGuest, endGuest } from "../lib/guest.js";
 
 const Ctx = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(!cloudEnabled);
+  const [guest, setGuest] = useState(() => isGuest());
 
   useEffect(() => {
     if (!cloudEnabled) return;
@@ -36,6 +38,9 @@ export function AuthProvider({ children }) {
     user,
     ready,
     cloudEnabled,
+    guest,
+    continueAsGuest: () => { startGuest(); setGuest(true); },
+    exitGuest: () => { endGuest(); setGuest(false); },
     signUp: (email, password) => supabase.auth.signUp({ email, password }),
     signIn: (email, password) => supabase.auth.signInWithPassword({ email, password }),
     signInWithGoogle: () =>

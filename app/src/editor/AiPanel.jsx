@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { generateDocument, aiBlocksToElements } from "../lib/aiClient.js";
 import { getQuota, consumeAiCredit } from "../lib/quota.js";
 import { useAuth } from "../auth/AuthProvider.jsx";
+import { guestCredits, spendGuestCredit, GUEST_MAX } from "../lib/guest.js";
 import { TEMPLATE_LIST } from "./model.js";
 
 const TYPES = TEMPLATE_LIST.filter((t) => t.id !== "blank");
@@ -14,6 +15,9 @@ const SpeechRec =
 export default function AiPanel({ editor, dispatch }) {
   const auth = useAuth();
   const signedIn = !!auth?.user;
+  const guest = !signedIn && !!auth?.guest;
+  const canAI = signedIn || guest;
+  const [guestLeft, setGuestLeft] = useState(() => guestCredits());
   const [brief, setBrief] = useState("");
   const [docType, setDocType] = useState("quotation");
   const [busy, setBusy] = useState(false);
@@ -35,9 +39,9 @@ export default function AiPanel({ editor, dispatch }) {
   const moneyDoc = docType !== "letter";
 
   useEffect(() => {
-    if (!signedIn) { setQuota(null); return; }
+    if (!signedIn) { setQuota(null); setGuestLeft(guestCredits()); return; }
     getQuota().then(setQuota);
-  }, [signedIn, auth?.user?.id]);
+  }, [signedIn, guest, auth?.user?.id]);
 
   function toggleMic() {
     if (!SpeechRec) return;
@@ -65,23 +69,33 @@ export default function AiPanel({ editor, dispatch }) {
   }
 
   async function run(mode) {
-    if (!signedIn) { setErr("Sign in to use AI. It's free — you get 5 generations to start."); return; }
+    if (!canAI) { setErr("Sign in or continue as guest to use AI — 5 free generations."); return; }
     if (!brief.trim()) { setErr("Describe what to write first."); return; }
-    if (quota && quota.free_left <= 0) {
+    if (signedIn && quota && quota.free_left <= 0) {
       setErr("You've used your 5 free AI documents. Upgrade soon for more — keep editing by hand anytime.");
+      return;
+    }
+    if (guest && guestLeft <= 0) {
+      setErr("You've used your 5 free guest tries. Sign in to keep going — it's free.");
       return;
     }
     setErr("");
     setBusy(true);
     try {
-      // consume the credit FIRST (atomic). If it returns null, we're out.
-      const after = await consumeAiCredit();
-      if (!after) {
-        setQuota({ free_left: 0, used: quota?.used ?? 0 });
-        setErr("You've used your 5 free AI documents. Upgrade for more.");
-        return;
+      // consume the credit FIRST. Signed-in = atomic RPC; guest = local counter.
+      if (guest) {
+        const left = spendGuestCredit();
+        if (left < 0) { setGuestLeft(0); setErr("You've used your 5 free guest tries. Sign in to keep going."); return; }
+        setGuestLeft(left);
+      } else {
+        const after = await consumeAiCredit();
+        if (!after) {
+          setQuota({ free_left: 0, used: quota?.used ?? 0 });
+          setErr("You've used your 5 free AI documents. Upgrade for more.");
+          return;
+        }
+        setQuota(after);
       }
-      setQuota(after);
       const fields = {
         refNo: refNo.trim(),
         date: docDate.trim(),
@@ -111,9 +125,15 @@ export default function AiPanel({ editor, dispatch }) {
           <span className="font-semibold tabular-nums">{quota.free_left} / 5 left</span>
         </div>
       )}
-      {!signedIn && (
+      {guest && (
+        <div className={"flex items-center justify-between rounded-md px-2 py-1 text-[11px] " + (guestLeft <= 0 ? "bg-red-50 text-red-700" : "bg-brass/10 text-navy/70")}>
+          <span>Guest tries</span>
+          <span className="font-semibold tabular-nums">{guestLeft} / {GUEST_MAX} left</span>
+        </div>
+      )}
+      {!canAI && (
         <div className="rounded-md bg-navy/5 px-2 py-1.5 text-[11px] text-navy/65">
-          <strong className="text-navy">Sign in</strong> to use AI — 5 free generations on every new account.
+          <strong className="text-navy">Sign in</strong> or use <strong className="text-navy">guest mode</strong> to use AI — 5 free generations.
         </div>
       )}
 
