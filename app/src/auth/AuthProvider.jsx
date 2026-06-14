@@ -35,7 +35,9 @@ export function AuthProvider({ children }) {
     signInWithGoogle: () =>
       supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: window.location.origin },
+        // return to THIS page (the app lives at /app/, not the site root).
+        // strip any hash/query so Supabase appends its token fragment cleanly.
+        options: { redirectTo: window.location.origin + window.location.pathname },
       }),
     signOut: () => supabase.auth.signOut(),
   };
