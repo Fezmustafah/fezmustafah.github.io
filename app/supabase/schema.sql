@@ -34,9 +34,21 @@ create table if not exists public.signatures (
   created_at timestamptz default now()
 );
 
-alter table public.letterheads enable row level security;
-alter table public.layouts     enable row level security;
-alter table public.signatures  enable row level security;
+-- Daily Invoice Tracker data: a small per-user key/value store. Keys are
+-- 'tracker-orders', 'tracker-settings', 'tracker-meta'; values are JSON blobs.
+-- This is what makes the tracker follow the account across devices.
+create table if not exists public.tracker_data (
+  user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  key        text not null,
+  value      jsonb,
+  updated_at timestamptz default now(),
+  primary key (user_id, key)
+);
+
+alter table public.letterheads  enable row level security;
+alter table public.layouts      enable row level security;
+alter table public.signatures   enable row level security;
+alter table public.tracker_data enable row level security;
 
 -- one policy per table: full access to your own rows only
 create policy "own letterheads" on public.letterheads
@@ -46,4 +58,7 @@ create policy "own layouts" on public.layouts
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "own signatures" on public.signatures
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "own tracker_data" on public.tracker_data
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

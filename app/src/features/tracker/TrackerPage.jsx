@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getOrders, setOrders as persistOrders, clearOrders,
   getSettings, saveSettings as persistSettings, getMeta, setMeta as persistMeta,
+  migrateTrackerToCloud,
 } from "./trackerStorage.js";
 import { DEFAULT_SETTINGS } from "./constants.js";
 import { listSignatures, listLetterheads } from "../../lib/storage.js";
@@ -31,16 +32,23 @@ export default function TrackerPage({ onExit, storeKey }) {
   const [activeSigId, setActiveSigId] = useState(null);
   const [loaded, setLoaded] = useState(false);
 
-  // initial load
+  // load (re-runs when the signed-in account changes — storeKey flips). On a
+  // cloud-enabled session this also lifts any device-local data up to the cloud
+  // once, so existing PC data starts syncing to other devices.
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      setLoaded(false);
+      try { await migrateTrackerToCloud(); } catch { /* non-fatal */ }
       const [o, s, m] = await Promise.all([getOrders(), getSettings(), getMeta()]);
+      if (cancelled) return;
       setOrders(o);
       setSettings(s);
       setMeta(m);
       setLoaded(true);
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [storeKey]);
 
   // signatures + letterheads (reload when auth/cloud changes — storeKey flips)
   useEffect(() => {
