@@ -11,6 +11,11 @@ export default {
         brassLight: "#C6A765",
         hairline: "#E5E0D5",
         slate: "#5B6B82",
+        // Daily Invoice Tracker palette (separate from the editor's navy/brass)
+        tnavy: "#1B2A5B",
+        tgold: "#C8A951",
+        tcream: "#FAF8F3",
+        tcreamDark: "#E0DDD5",
       },
       fontFamily: {
         // premium type system shared with the marketing site
