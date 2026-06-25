@@ -113,6 +113,27 @@ export async function setMeta(meta) {
   await writeKey(META_KEY, meta);
 }
 
+// is the tracker currently backed by the cloud (signed in + configured)?
+export function isCloudActive() {
+  return useCloud();
+}
+
+// Force-push this device's local data up to the cloud (overwrites cloud copies).
+// Used by the manual "Upload this device" button to seed/repair sync.
+export async function pushLocalToCloud() {
+  if (!useCloud()) throw new Error("Not signed in — sign in on this device to sync.");
+  let pushed = 0;
+  for (const key of [ORDERS_KEY, SETTINGS_KEY, META_KEY]) {
+    const v = await get(key);
+    const empty = v == null || (typeof v === "object" && Object.keys(v).length === 0);
+    if (!empty) {
+      await cloudSet(key, v);
+      pushed++;
+    }
+  }
+  return pushed;
+}
+
 // ---- one-time local -> cloud lift -----------------------------------------
 // On a device that already has local tracker data, push it up to the cloud the
 // first time the signed-in user opens the tracker (only when the cloud copy is

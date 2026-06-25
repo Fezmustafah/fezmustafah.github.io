@@ -2,11 +2,11 @@
 // letterhead studio (separate route via App's `mode` state). Holds all tracker
 // state, persists to IndexedDB (tracker-* keys), and hosts the Daily / Weekly /
 // Settings tabs. Shares nothing with the document generator.
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getOrders, setOrders as persistOrders, clearOrders,
   getSettings, saveSettings as persistSettings, getMeta, setMeta as persistMeta,
-  migrateTrackerToCloud,
+  migrateTrackerToCloud, isCloudActive, pushLocalToCloud,
 } from "./trackerStorage.js";
 import { DEFAULT_SETTINGS } from "./constants.js";
 import { listSignatures, listLetterheads } from "../../lib/storage.js";
@@ -31,24 +31,39 @@ export default function TrackerPage({ onExit, storeKey }) {
   const [letterheads, setLetterheads] = useState([]);
   const [activeSigId, setActiveSigId] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+  const cloud = isCloudActive();
 
-  // load (re-runs when the signed-in account changes — storeKey flips). On a
-  // cloud-enabled session this also lifts any device-local data up to the cloud
-  // once, so existing PC data starts syncing to other devices.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoaded(false);
-      try { await migrateTrackerToCloud(); } catch { /* non-fatal */ }
-      const [o, s, m] = await Promise.all([getOrders(), getSettings(), getMeta()]);
-      if (cancelled) return;
-      setOrders(o);
-      setSettings(s);
-      setMeta(m);
-      setLoaded(true);
-    })();
-    return () => { cancelled = true; };
-  }, [storeKey]);
+  // load orders/settings/meta from the active backend (cloud or local).
+  const load = useCallback(async ({ migrate = false } = {}) => {
+    setLoaded(false);
+    if (migrate) { try { await migrateTrackerToCloud(); } catch { /* non-fatal */ } }
+    const [o, s, m] = await Promise.all([getOrders(), getSettings(), getMeta()]);
+    setOrders(o);
+    setSettings(s);
+    setMeta(m);
+    setLoaded(true);
+  }, []);
+
+  // re-load when the signed-in account changes (storeKey flips); the first
+  // cloud load also lifts existing device-local data up so it starts syncing.
+  useEffect(() => { load({ migrate: true }); }, [storeKey, load]);
+
+  async function refreshFromCloud() {
+    setSyncMsg("Refreshing…");
+    await load({ migrate: false });
+    setSyncMsg("");
+  }
+  async function uploadThisDevice() {
+    try {
+      setSyncMsg("Uploading…");
+      await pushLocalToCloud();
+      await load({ migrate: false });
+      setSyncMsg("Uploaded this device's data to your account ✓");
+    } catch (e) {
+      setSyncMsg(e.message || "Upload failed");
+    }
+  }
 
   // signatures + letterheads (reload when auth/cloud changes — storeKey flips)
   useEffect(() => {
@@ -181,6 +196,14 @@ export default function TrackerPage({ onExit, storeKey }) {
       {/* body */}
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-6">
+          <SyncBar
+            cloud={cloud}
+            msg={syncMsg}
+            hasLocalData={Object.keys(orders).length > 0}
+            onRefresh={refreshFromCloud}
+            onUpload={uploadThisDevice}
+          />
+
           {reminder && (
             <ReminderBanner reminder={reminder} buyer={settings.buyer.name} onGo={() => setTab("weekly")} />
           )}
@@ -207,6 +230,35 @@ export default function TrackerPage({ onExit, storeKey }) {
             <SettingsTab settings={settings} onSave={saveSettings} letterheads={letterheads} />
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SyncBar({ cloud, msg, hasLocalData, onRefresh, onUpload }) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-tcreamDark bg-white px-3 py-2 text-xs">
+      <span className="flex items-center gap-1.5 font-semibold">
+        {cloud ? (
+          <span className="text-green-700">☁ Synced to your account</span>
+        ) : (
+          <span className="text-slate">● Saved on this device only — sign in to sync across devices</span>
+        )}
+      </span>
+      <div className="flex items-center gap-2">
+        {msg && <span className="text-slate">{msg}</span>}
+        {cloud && (
+          <>
+            <button onClick={onRefresh} className="rounded-md border border-tcreamDark px-2.5 py-1 font-semibold text-tnavy hover:bg-tcream">
+              Refresh
+            </button>
+            {hasLocalData && (
+              <button onClick={onUpload} className="rounded-md bg-tnavy px-2.5 py-1 font-semibold text-white hover:bg-tnavy/90">
+                Upload this device
+              </button>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
