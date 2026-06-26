@@ -50,16 +50,22 @@ alter table public.layouts      enable row level security;
 alter table public.signatures   enable row level security;
 alter table public.tracker_data enable row level security;
 
--- one policy per table: full access to your own rows only
+-- one policy per table: full access to your own rows only.
+-- drop-then-create so the whole file is safe to re-run (policies have no
+-- "create ... if not exists" form).
+drop policy if exists "own letterheads" on public.letterheads;
 create policy "own letterheads" on public.letterheads
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "own layouts" on public.layouts;
 create policy "own layouts" on public.layouts
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "own signatures" on public.signatures;
 create policy "own signatures" on public.signatures
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "own tracker_data" on public.tracker_data;
 create policy "own tracker_data" on public.tracker_data
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
