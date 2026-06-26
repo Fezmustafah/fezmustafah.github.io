@@ -7,8 +7,7 @@ export default function WeeklyTab({
   rows, settings, onClearWeek, periodStart, periodEnd,
   signatures, activeSig, activeSigId, onPickSig, letterhead,
 }) {
-  const { item } = settings;
-  const t = totals(rows.map((r) => r.order), item.vatRate);
+  const t = totals(rows.map((r) => r.order), settings.vatRate);
   const days = new Set(rows.map((r) => r.date)).size;
 
   function downloadStatement() {
@@ -69,7 +68,7 @@ export default function WeeklyTab({
               <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-tnavy">{money(t.subtotal)}</td>
             </tr>
             <tr className="bg-tcream">
-              <td colSpan={5} className="px-3 py-1.5 text-right text-xs font-semibold uppercase text-slate">VAT ({item.vatRate}%)</td>
+              <td colSpan={5} className="px-3 py-1.5 text-right text-xs font-semibold uppercase text-slate">VAT ({settings.vatRate}%)</td>
               <td className="px-3 py-1.5 text-right tabular-nums text-tnavy">{money(t.vat)}</td>
             </tr>
             <tr className="bg-tnavy text-white">

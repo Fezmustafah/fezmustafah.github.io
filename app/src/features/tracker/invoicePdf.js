@@ -35,7 +35,7 @@ function partyBox(doc, x, y, w, title, lines) {
 }
 
 export function buildInvoice({ order, date, index, settings, sig, letterhead }) {
-  const { seller, buyer, item } = settings;
+  const { seller, buyer, vatRate } = settings;
   const useLh = !!(letterhead && letterhead.dataUrl);
   const doc = newDoc();
   const { w, margin } = PAGE;
@@ -122,7 +122,7 @@ export function buildInvoice({ order, date, index, settings, sig, letterhead }) 
   ink(doc, C.text);
   doc.setFont("helvetica", "normal").setFontSize(9);
   doc.text("1", margin + 4, rowY + 6);
-  doc.text(item.description, margin + 14, rowY + 6);
+  doc.text(order.item || "", margin + 14, rowY + 6);
   doc.text(String(order.qty), qtyR, rowY + 6, { align: "right" });
   doc.text(money(order.unitPrice), unitR, rowY + 6, { align: "right" });
   doc.text(money(order.amount), amtR, rowY + 6, { align: "right" });
@@ -132,11 +132,11 @@ export function buildInvoice({ order, date, index, settings, sig, letterhead }) 
   doc.line(margin, rowY + 9, w - margin, rowY + 9);
 
   // ---- totals ----
-  const t = totals([order], item.vatRate);
+  const t = totals([order], vatRate);
   let ty = rowY + 18;
   moneyRow(doc, "Subtotal", t.subtotal, rightX, ty);
   ty += 6;
-  moneyRow(doc, `VAT (${item.vatRate}%)`, t.vat, rightX, ty);
+  moneyRow(doc, `VAT (${vatRate}%)`, t.vat, rightX, ty);
   ty += 3;
   stroke(doc, C.navy);
   doc.setLineWidth(0.4);

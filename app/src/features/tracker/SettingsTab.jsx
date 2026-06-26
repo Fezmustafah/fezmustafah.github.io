@@ -44,6 +44,27 @@ export default function SettingsTab({ settings, onSave, letterheads = [] }) {
     setSaved(false);
   };
 
+  const items = draft.items || [];
+  const setItem = (i, key, v) => {
+    setDraft((d) => ({
+      ...d,
+      items: d.items.map((it, idx) => (idx === i ? { ...it, [key]: key === "unitPrice" ? Number(v) : v } : it)),
+    }));
+    setSaved(false);
+  };
+  const addItem = () => {
+    setDraft((d) => ({ ...d, items: [...d.items, { description: "", unitPrice: 0 }] }));
+    setSaved(false);
+  };
+  const removeItem = (i) => {
+    setDraft((d) => ({ ...d, items: d.items.length > 1 ? d.items.filter((_, idx) => idx !== i) : d.items }));
+    setSaved(false);
+  };
+  const setVat = (v) => {
+    setDraft((d) => ({ ...d, vatRate: Number(v) }));
+    setSaved(false);
+  };
+
   function save() {
     onSave(draft);
     setSaved(true);
@@ -68,11 +89,57 @@ export default function SettingsTab({ settings, onSave, letterheads = [] }) {
         </Card>
       </div>
 
-      <Card title="Item & VAT">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Description" value={draft.item.description} onChange={set("item", "description")} />
-          <Field label="Unit price (AED)" type="number" value={draft.item.unitPrice} onChange={set("item", "unitPrice")} />
-          <Field label="VAT rate (%)" type="number" value={draft.item.vatRate} onChange={set("item", "vatRate")} />
+      <Card title="Items & VAT">
+        <div className="space-y-2">
+          {items.map((it, i) => (
+            <div key={i} className="flex items-end gap-2">
+              <div className="flex-1">
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-tnavy/70">{i === 0 ? "Item" : `Item ${i + 1}`}</span>
+                <input
+                  value={it.description}
+                  onChange={(e) => setItem(i, "description", e.target.value)}
+                  placeholder="e.g. Mutton Biryani (Parcel)"
+                  className="w-full rounded-lg border border-tcreamDark bg-white px-3 py-2 text-sm outline-none focus:border-tgold focus:ring-2 focus:ring-tgold/30"
+                />
+              </div>
+              <div className="w-28">
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-tnavy/70">Price (AED)</span>
+                <input
+                  type="number"
+                  value={it.unitPrice}
+                  onChange={(e) => setItem(i, "unitPrice", e.target.value)}
+                  className="w-full rounded-lg border border-tcreamDark bg-white px-3 py-2 text-sm outline-none focus:border-tgold focus:ring-2 focus:ring-tgold/30"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => removeItem(i)}
+                disabled={items.length <= 1}
+                title="Remove item"
+                className="mb-0.5 rounded-lg px-2.5 py-2 text-lg font-bold text-[#C0392B] disabled:opacity-30 hover:bg-red-50"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+          <button
+            type="button"
+            onClick={addItem}
+            className="rounded-lg border border-tnavy px-3 py-1.5 text-sm font-semibold text-tnavy hover:bg-tcream"
+          >
+            + Add item
+          </button>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-tnavy/70">VAT rate (%)</span>
+            <input
+              type="number"
+              value={draft.vatRate}
+              onChange={(e) => setVat(e.target.value)}
+              className="w-28 rounded-lg border border-tcreamDark bg-white px-3 py-2 text-sm outline-none focus:border-tgold focus:ring-2 focus:ring-tgold/30"
+            />
+          </label>
         </div>
       </Card>
 

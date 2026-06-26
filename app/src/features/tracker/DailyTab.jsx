@@ -10,17 +10,19 @@ export default function DailyTab({
 }) {
   const [qty, setQty] = useState("");
   const [location, setLocation] = useState("");
-  const { item } = settings;
+  const [itemIdx, setItemIdx] = useState(0);
+  const items = settings.items || [];
+  const selected = items[Math.min(itemIdx, items.length - 1)] || items[0] || { description: "", unitPrice: 0 };
 
   function submit() {
     const q = Number(qty);
     if (!q || q <= 0 || !location.trim()) return;
-    onAdd(date, q, location.trim());
+    onAdd(date, q, location.trim(), selected);
     setQty("");
     setLocation("");
   }
 
-  const t = totals(dayOrders, item.vatRate);
+  const t = totals(dayOrders, settings.vatRate);
 
   function downloadOne(order, index) {
     downloadInvoice({ order, date, index, settings, sig: activeSig, letterhead });
@@ -80,12 +82,24 @@ export default function DailyTab({
         <div className="mt-3 grid grid-cols-2 gap-3">
           <label className="block">
             <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate/70">Item</span>
-            <input disabled value={item.description}
-              className="w-full rounded-lg border border-tcreamDark bg-tcream px-3 py-2 text-sm text-slate" />
+            {items.length > 1 ? (
+              <select
+                value={itemIdx}
+                onChange={(e) => setItemIdx(Number(e.target.value))}
+                className="w-full rounded-lg border border-tcreamDark bg-white px-3 py-2 text-sm text-tnavy outline-none focus:border-tgold focus:ring-2 focus:ring-tgold/30"
+              >
+                {items.map((it, i) => (
+                  <option key={i} value={i}>{it.description} — AED {money(it.unitPrice)}</option>
+                ))}
+              </select>
+            ) : (
+              <input disabled value={selected.description}
+                className="w-full rounded-lg border border-tcreamDark bg-tcream px-3 py-2 text-sm text-slate" />
+            )}
           </label>
           <label className="block">
             <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate/70">Unit price (AED)</span>
-            <input disabled value={money(item.unitPrice)}
+            <input disabled value={money(selected.unitPrice)}
               className="w-full rounded-lg border border-tcreamDark bg-tcream px-3 py-2 text-sm text-slate" />
           </label>
         </div>
@@ -140,7 +154,7 @@ export default function DailyTab({
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-tnavy text-white sm:grid-cols-4">
             <Stat label="Parcels" value={t.qty} />
             <Stat label="Subtotal" value={`AED ${money(t.subtotal)}`} />
-            <Stat label={`VAT ${item.vatRate}%`} value={`AED ${money(t.vat)}`} />
+            <Stat label={`VAT ${settings.vatRate}%`} value={`AED ${money(t.vat)}`} />
             <Stat label="Day total" value={`AED ${money(t.total)}`} strong />
           </div>
           <button

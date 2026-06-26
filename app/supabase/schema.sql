@@ -62,3 +62,10 @@ create policy "own signatures" on public.signatures
 
 create policy "own tracker_data" on public.tracker_data
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- enable realtime so a change on one device pushes to the others instantly
+-- (safe to re-run: ignored if the table is already in the publication).
+do $$ begin
+  alter publication supabase_realtime add table public.tracker_data;
+exception when others then null;
+end $$;

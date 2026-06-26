@@ -30,7 +30,7 @@ function tableHead(doc, y) {
 }
 
 export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, letterhead }) {
-  const { seller, buyer, item } = settings;
+  const { seller, buyer, vatRate } = settings;
   const useLh = !!(letterhead && letterhead.dataUrl);
   const doc = newDoc();
   const { w, margin } = PAGE;
@@ -98,7 +98,7 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
   doc.line(margin, y, w - margin, y);
 
   // grand totals — push to a fresh page if there isn't room
-  const t = totals(rows.map((r) => r.order), item.vatRate);
+  const t = totals(rows.map((r) => r.order), vatRate);
   if (y + 48 > bodyBottom) {
     endPage();
     doc.addPage();
@@ -112,7 +112,7 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
   doc.text("Subtotal", rightX - 55, ty);
   doc.text(`AED ${money(t.subtotal)}`, rightX, ty, { align: "right" });
   ty += 6;
-  doc.text(`VAT (${item.vatRate}%)`, rightX - 55, ty);
+  doc.text(`VAT (${vatRate}%)`, rightX - 55, ty);
   doc.text(`AED ${money(t.vat)}`, rightX, ty, { align: "right" });
   ty += 4;
   fill(doc, C.navy);

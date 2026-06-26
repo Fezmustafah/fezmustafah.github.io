@@ -1,19 +1,25 @@
 // trackerStorage.js — persistence for the Daily Invoice Tracker.
-// Mirrors the app's storage strategy: when the user is signed in (and cloud is
-// configured) the data lives in Supabase (table `tracker_data`, per-user RLS)
-// so it follows the account across devices; otherwise it stays device-local in
-// idb-keyval. Cloud failures degrade gracefully to local so the tool never
-// breaks (e.g. before the schema migration is run).
+//
+// Model: when signed in (and cloud configured) Supabase is the source of truth
+// (table `tracker_data`, per-user RLS) so data follows the account across
+// devices. Local idb-keyval is a cache / offline buffer. Loading MERGES local
+// buffered writes into the cloud copy (union by date + order id) so nothing is
+// ever lost or clobbered — this is what fixes the "upload wiped my entries"
+// bug. When signed out it's purely local.
 import { get, set, del } from "idb-keyval";
 import { getUserId } from "../../lib/authState.js";
 import { cloudEnabled, supabase } from "../../lib/supabase.js";
-import { DEFAULT_SETTINGS } from "./constants.js";
+import { DEFAULT_SETTINGS, DEFAULT_VAT_RATE } from "./constants.js";
 
-const ORDERS_KEY = "tracker-orders"; // { [isoDate: string]: Order[] }
-const SETTINGS_KEY = "tracker-settings"; // { seller, buyer, item, header }
+const ORDERS_KEY = "tracker-orders"; // { [isoDate]: Order[] }
+const SETTINGS_KEY = "tracker-settings"; // { seller, buyer, items, vatRate, header }
 const META_KEY = "tracker-meta"; // { trackingStart: isoDate }
 
 const useCloud = () => cloudEnabled && !!getUserId();
+
+export function isCloudActive() {
+  return useCloud();
+}
 
 // ---- Supabase key/value helpers ------------------------------------------
 async function cloudGet(key) {
@@ -39,25 +45,82 @@ async function cloudDel(key) {
   if (error) throw error;
 }
 
-// ---- backend-agnostic read / write / delete ------------------------------
-async function readKey(key) {
-  if (useCloud()) {
-    try {
-      return await cloudGet(key);
-    } catch (e) {
-      console.warn("[tracker] cloud read failed, falling back to local:", e.message);
+// union two orders maps without dropping anything (cloud + local-buffered)
+function mergeOrders(a = {}, b = {}) {
+  const out = {};
+  for (const date of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) {
+    const seen = new Set();
+    const list = [];
+    for (const o of [...(a?.[date] || []), ...(b?.[date] || [])]) {
+      if (o && !seen.has(o.id)) { seen.add(o.id); list.push(o); }
     }
+    if (list.length) out[date] = list;
   }
-  return await get(key);
+  return out;
 }
 
+// fill defaults + migrate the old single-`item` shape -> items[] + vatRate
+function normalizeSettings(saved) {
+  const s = saved || {};
+  const items = Array.isArray(s.items) && s.items.length
+    ? s.items.map((it) => ({ description: String(it.description || ""), unitPrice: Number(it.unitPrice) || 0 }))
+    : s.item
+      ? [{ description: s.item.description, unitPrice: Number(s.item.unitPrice) || 0 }]
+      : DEFAULT_SETTINGS.items.map((x) => ({ ...x }));
+  const vatRate = s.vatRate != null ? Number(s.vatRate) : s.item?.vatRate != null ? Number(s.item.vatRate) : DEFAULT_VAT_RATE;
+  return {
+    seller: { ...DEFAULT_SETTINGS.seller, ...(s.seller || {}) },
+    buyer: { ...DEFAULT_SETTINGS.buyer, ...(s.buyer || {}) },
+    items,
+    vatRate,
+    header: { ...DEFAULT_SETTINGS.header, ...(s.header || {}) },
+  };
+}
+
+// ---- load (cloud-authoritative with safe merge) ---------------------------
+export async function loadTracker() {
+  const localOrders = (await get(ORDERS_KEY)) || {};
+  const localSettings = (await get(SETTINGS_KEY)) || null;
+  const localMeta = (await get(META_KEY)) || null;
+
+  if (useCloud()) {
+    try {
+      const [co, cs, cm] = await Promise.all([cloudGet(ORDERS_KEY), cloudGet(SETTINGS_KEY), cloudGet(META_KEY)]);
+
+      // orders: merge cloud with any offline-buffered local writes (no loss)
+      const orders = mergeOrders(co || {}, localOrders);
+      if (JSON.stringify(orders) !== JSON.stringify(co || {})) {
+        try { await cloudSet(ORDERS_KEY, orders); } catch { /* keep going */ }
+      }
+
+      // settings / meta: cloud wins when present; otherwise seed from local
+      let settings = cs;
+      if (settings == null && localSettings) { settings = localSettings; try { await cloudSet(SETTINGS_KEY, settings); } catch {} }
+      let meta = cm;
+      if (meta == null && localMeta) { meta = localMeta; try { await cloudSet(META_KEY, meta); } catch {} }
+
+      // refresh the local cache to match
+      await set(ORDERS_KEY, orders);
+      if (settings) await set(SETTINGS_KEY, settings);
+      if (meta) await set(META_KEY, meta);
+
+      return { orders, settings: normalizeSettings(settings), meta: meta || {} };
+    } catch (e) {
+      console.warn("[tracker] cloud load failed, using local:", e.message);
+    }
+  }
+  return { orders: localOrders, settings: normalizeSettings(localSettings), meta: localMeta || {} };
+}
+
+// ---- writes (cloud + local mirror; local buffer on cloud failure) ---------
 async function writeKey(key, value) {
   if (useCloud()) {
     try {
       await cloudSet(key, value);
+      await set(key, value); // keep local cache in step with the cloud
       return;
     } catch (e) {
-      console.warn("[tracker] cloud write failed, falling back to local:", e.message);
+      console.warn("[tracker] cloud write failed, buffered locally:", e.message);
     }
   }
   await set(key, value);
@@ -65,91 +128,32 @@ async function writeKey(key, value) {
 
 async function deleteKey(key) {
   if (useCloud()) {
-    try {
-      await cloudDel(key);
-      return;
-    } catch (e) {
-      console.warn("[tracker] cloud delete failed, falling back to local:", e.message);
-    }
+    try { await cloudDel(key); await del(key); return; } catch (e) { console.warn("[tracker] cloud delete failed:", e.message); }
   }
   await del(key);
 }
 
-// ---- orders ---------------------------------------------------------------
-export async function getOrders() {
-  return (await readKey(ORDERS_KEY)) || {};
-}
+export const setOrders = (orders) => writeKey(ORDERS_KEY, orders);
+export const clearOrders = () => deleteKey(ORDERS_KEY);
+export const saveSettings = (settings) => writeKey(SETTINGS_KEY, settings);
+export const setMeta = (meta) => writeKey(META_KEY, meta);
 
-export async function setOrders(orders) {
-  await writeKey(ORDERS_KEY, orders);
-}
-
-export async function clearOrders() {
-  await deleteKey(ORDERS_KEY);
-}
-
-// ---- settings -------------------------------------------------------------
-export async function getSettings() {
-  const saved = (await readKey(SETTINGS_KEY)) || {};
-  // merge so newly added default fields appear even on old saved blobs
-  return {
-    seller: { ...DEFAULT_SETTINGS.seller, ...(saved.seller || {}) },
-    buyer: { ...DEFAULT_SETTINGS.buyer, ...(saved.buyer || {}) },
-    item: { ...DEFAULT_SETTINGS.item, ...(saved.item || {}) },
-    header: { ...DEFAULT_SETTINGS.header, ...(saved.header || {}) },
-  };
-}
-
-export async function saveSettings(settings) {
-  await writeKey(SETTINGS_KEY, settings);
-}
-
-// ---- meta (tracking period bookkeeping for the weekly reminder) -----------
-export async function getMeta() {
-  return (await readKey(META_KEY)) || {};
-}
-
-export async function setMeta(meta) {
-  await writeKey(META_KEY, meta);
-}
-
-// is the tracker currently backed by the cloud (signed in + configured)?
-export function isCloudActive() {
-  return useCloud();
-}
-
-// Force-push this device's local data up to the cloud (overwrites cloud copies).
-// Used by the manual "Upload this device" button to seed/repair sync.
-export async function pushLocalToCloud() {
-  if (!useCloud()) throw new Error("Not signed in — sign in on this device to sync.");
-  let pushed = 0;
-  for (const key of [ORDERS_KEY, SETTINGS_KEY, META_KEY]) {
-    const v = await get(key);
-    const empty = v == null || (typeof v === "object" && Object.keys(v).length === 0);
-    if (!empty) {
-      await cloudSet(key, v);
-      pushed++;
-    }
+// ---- realtime: notify when this user's tracker rows change elsewhere -------
+export function subscribeTracker(onChange) {
+  if (!useCloud()) return () => {};
+  const uid = getUserId();
+  let channel;
+  try {
+    channel = supabase
+      .channel("tracker:" + uid)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tracker_data", filter: `user_id=eq.${uid}` },
+        () => onChange(),
+      )
+      .subscribe();
+  } catch (e) {
+    console.warn("[tracker] realtime subscribe failed:", e.message);
   }
-  return pushed;
-}
-
-// ---- one-time local -> cloud lift -----------------------------------------
-// On a device that already has local tracker data, push it up to the cloud the
-// first time the signed-in user opens the tracker (only when the cloud copy is
-// still empty, so we never clobber data entered on another device).
-export async function migrateTrackerToCloud() {
-  if (!useCloud()) return;
-  for (const key of [ORDERS_KEY, SETTINGS_KEY, META_KEY]) {
-    try {
-      const remote = await cloudGet(key);
-      const remoteEmpty = remote == null || (typeof remote === "object" && Object.keys(remote).length === 0);
-      if (!remoteEmpty) continue;
-      const localVal = await get(key);
-      const localEmpty = localVal == null || (typeof localVal === "object" && Object.keys(localVal).length === 0);
-      if (!localEmpty) await cloudSet(key, localVal);
-    } catch (e) {
-      console.warn("[tracker] migrate skipped for", key, e.message);
-    }
-  }
+  return () => { try { if (channel) supabase.removeChannel(channel); } catch {} };
 }

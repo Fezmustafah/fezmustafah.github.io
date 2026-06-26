@@ -2,11 +2,11 @@
 // letterhead studio (separate route via App's `mode` state). Holds all tracker
 // state, persists to IndexedDB (tracker-* keys), and hosts the Daily / Weekly /
 // Settings tabs. Shares nothing with the document generator.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  getOrders, setOrders as persistOrders, clearOrders,
-  getSettings, saveSettings as persistSettings, getMeta, setMeta as persistMeta,
-  migrateTrackerToCloud, isCloudActive, pushLocalToCloud,
+  loadTracker, setOrders as persistOrders, clearOrders,
+  saveSettings as persistSettings, setMeta as persistMeta,
+  isCloudActive, subscribeTracker,
 } from "./trackerStorage.js";
 import { DEFAULT_SETTINGS } from "./constants.js";
 import { listSignatures, listLetterheads } from "../../lib/storage.js";
@@ -33,36 +33,43 @@ export default function TrackerPage({ onExit, storeKey }) {
   const [loaded, setLoaded] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
   const cloud = isCloudActive();
+  const writing = useRef(false); // suppress self-triggered realtime reloads
 
-  // load orders/settings/meta from the active backend (cloud or local).
-  const load = useCallback(async ({ migrate = false } = {}) => {
-    setLoaded(false);
-    if (migrate) { try { await migrateTrackerToCloud(); } catch { /* non-fatal */ } }
-    const [o, s, m] = await Promise.all([getOrders(), getSettings(), getMeta()]);
-    setOrders(o);
-    setSettings(s);
-    setMeta(m);
+  // load orders/settings/meta from the active backend (cloud merges in local).
+  const load = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoaded(false);
+    const { orders, settings, meta } = await loadTracker();
+    setOrders(orders);
+    setSettings(settings);
+    setMeta(meta);
     setLoaded(true);
   }, []);
 
-  // re-load when the signed-in account changes (storeKey flips); the first
-  // cloud load also lifts existing device-local data up so it starts syncing.
-  useEffect(() => { load({ migrate: true }); }, [storeKey, load]);
+  // (re)load on mount and whenever the signed-in account changes
+  useEffect(() => { load(true); }, [storeKey, load]);
 
-  async function refreshFromCloud() {
+  // keep devices in step: refresh when the tab regains focus, on realtime
+  // changes from another device, and on a gentle interval as a safety net.
+  useEffect(() => {
+    if (!cloud) return;
+    const refresh = () => { if (!writing.current && document.visibilityState === "visible") load(false); };
+    const onVis = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", refresh);
+    const unsub = subscribeTracker(refresh);
+    const poll = setInterval(refresh, 20000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", refresh);
+      clearInterval(poll);
+      unsub();
+    };
+  }, [cloud, storeKey, load]);
+
+  async function refreshNow() {
     setSyncMsg("Refreshing…");
-    await load({ migrate: false });
+    await load(false);
     setSyncMsg("");
-  }
-  async function uploadThisDevice() {
-    try {
-      setSyncMsg("Uploading…");
-      await pushLocalToCloud();
-      await load({ migrate: false });
-      setSyncMsg("Uploaded this device's data to your account ✓");
-    } catch (e) {
-      setSyncMsg(e.message || "Upload failed");
-    }
   }
 
   // signatures + letterheads (reload when auth/cloud changes — storeKey flips)
@@ -102,22 +109,30 @@ export default function TrackerPage({ onExit, storeKey }) {
 
   // ---- mutations -----------------------------------------------------------
   async function commitOrders(next, nextMeta) {
+    writing.current = true;
     setOrders(next);
-    await persistOrders(next);
-    if (nextMeta) {
-      setMeta(nextMeta);
-      await persistMeta(nextMeta);
+    try {
+      await persistOrders(next);
+      if (nextMeta) {
+        setMeta(nextMeta);
+        await persistMeta(nextMeta);
+      }
+    } finally {
+      // brief grace so our own realtime echo doesn't trigger a reload
+      setTimeout(() => { writing.current = false; }, 1500);
     }
   }
 
-  function addOrder(d, qty, location) {
+  function addOrder(d, qty, location, chosenItem) {
+    const it = chosenItem || settings.items[0] || { description: "", unitPrice: 0 };
+    const unitPrice = Number(it.unitPrice) || 0;
     const order = {
       id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
       qty,
       location,
-      item: settings.item.description,
-      unitPrice: settings.item.unitPrice,
-      amount: qty * settings.item.unitPrice,
+      item: it.description,
+      unitPrice,
+      amount: qty * unitPrice,
       createdAt: new Date().toISOString(),
     };
     const next = { ...orders, [d]: [...(orders[d] || []), order] };
@@ -136,17 +151,25 @@ export default function TrackerPage({ onExit, storeKey }) {
   }
 
   function saveSettings(draft) {
+    writing.current = true;
     setSettings(draft);
-    persistSettings(draft);
+    Promise.resolve(persistSettings(draft)).finally(() => {
+      setTimeout(() => { writing.current = false; }, 1500);
+    });
   }
 
   async function clearWeek() {
-    await clearOrders();
-    setOrders({});
-    const nextMeta = { ...meta, trackingStart: todayIso() };
-    setMeta(nextMeta);
-    await persistMeta(nextMeta);
-    setTab("daily");
+    writing.current = true;
+    try {
+      await clearOrders();
+      setOrders({});
+      const nextMeta = { ...meta, trackingStart: todayIso() };
+      setMeta(nextMeta);
+      await persistMeta(nextMeta);
+      setTab("daily");
+    } finally {
+      setTimeout(() => { writing.current = false; }, 1500);
+    }
   }
 
   const dayOrders = orders[date] || [];
@@ -196,13 +219,7 @@ export default function TrackerPage({ onExit, storeKey }) {
       {/* body */}
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-6">
-          <SyncBar
-            cloud={cloud}
-            msg={syncMsg}
-            hasLocalData={Object.keys(orders).length > 0}
-            onRefresh={refreshFromCloud}
-            onUpload={uploadThisDevice}
-          />
+          <SyncBar cloud={cloud} msg={syncMsg} onRefresh={refreshNow} />
 
           {reminder && (
             <ReminderBanner reminder={reminder} buyer={settings.buyer.name} onGo={() => setTab("weekly")} />
@@ -235,12 +252,12 @@ export default function TrackerPage({ onExit, storeKey }) {
   );
 }
 
-function SyncBar({ cloud, msg, hasLocalData, onRefresh, onUpload }) {
+function SyncBar({ cloud, msg, onRefresh }) {
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-tcreamDark bg-white px-3 py-2 text-xs">
       <span className="flex items-center gap-1.5 font-semibold">
         {cloud ? (
-          <span className="text-green-700">☁ Synced to your account</span>
+          <span className="text-green-700">☁ Synced to your account · live on all your devices</span>
         ) : (
           <span className="text-slate">● Saved on this device only — sign in to sync across devices</span>
         )}
@@ -248,16 +265,9 @@ function SyncBar({ cloud, msg, hasLocalData, onRefresh, onUpload }) {
       <div className="flex items-center gap-2">
         {msg && <span className="text-slate">{msg}</span>}
         {cloud && (
-          <>
-            <button onClick={onRefresh} className="rounded-md border border-tcreamDark px-2.5 py-1 font-semibold text-tnavy hover:bg-tcream">
-              Refresh
-            </button>
-            {hasLocalData && (
-              <button onClick={onUpload} className="rounded-md bg-tnavy px-2.5 py-1 font-semibold text-white hover:bg-tnavy/90">
-                Upload this device
-              </button>
-            )}
-          </>
+          <button onClick={onRefresh} className="rounded-md border border-tcreamDark px-2.5 py-1 font-semibold text-tnavy hover:bg-tcream">
+            Refresh
+          </button>
         )}
       </div>
     </div>

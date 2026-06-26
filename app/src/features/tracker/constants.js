@@ -22,13 +22,16 @@ export const DEFAULT_BUYER = {
 export const DEFAULT_ITEM = {
   description: "Chicken Biryani (Parcel)",
   unitPrice: 10,
-  vatRate: 5,
 };
+
+export const DEFAULT_VAT_RATE = 5;
 
 export const DEFAULT_SETTINGS = {
   seller: { ...DEFAULT_SELLER },
   buyer: { ...DEFAULT_BUYER },
-  item: { ...DEFAULT_ITEM },
+  // multiple sellable items; each delivery picks one. VAT is a single global rate.
+  items: [{ ...DEFAULT_ITEM }],
+  vatRate: DEFAULT_VAT_RATE,
   // header style: built-in drawn header (default) OR one of the user's saved
   // letterheads rendered as the page background.
   header: { style: "drawn", letterheadId: null }, // "drawn" | "letterhead"
