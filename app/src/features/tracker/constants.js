@@ -39,6 +39,9 @@ export const DEFAULT_SETTINGS = {
   // header style: built-in drawn header (default) OR one of the user's saved
   // letterheads rendered as the page background.
   header: { style: "drawn", letterheadId: null }, // "drawn" | "letterhead"
+  // document look: "classic" = navy/gold/cream colourful theme (default),
+  // "corporate" = minimal monochrome, serif display font, hairline rules.
+  theme: "classic", // "classic" | "corporate"
 };
 
 // Exact RGB values mirrored from the Tailwind tracker tokens (see tailwind.config.js).
@@ -52,6 +55,55 @@ export const COLORS = {
   muted:     { r: 102, g: 102, b: 102 }, // #666666
   red:       { r: 192, g: 57,  b: 43  }, // #C0392B — delete buttons
 };
+
+// ---- PDF themes ----------------------------------------------------------
+// Each theme is a palette (`c`) + font choices (`font`) + a `minimal` flag.
+// The shared PDF chrome (pdfShared.js) and both builders branch on these so a
+// single `settings.theme` switch restyles every generated document.
+//   classic   — the original navy/gold/cream: filled bars, colourful.
+//   corporate — minimal monochrome: serif display font, hairline rules, no
+//               filled blocks. Reads cleaner / more formal on plain paper.
+const WHITE = { r: 255, g: 255, b: 255 };
+const RED = { r: 192, g: 57, b: 43 };
+
+export const THEMES = {
+  classic: {
+    key: "classic",
+    minimal: false,
+    c: {
+      primary: COLORS.navy, // bars, headings, table header fill
+      accent: COLORS.gold, // rules, edges, underlines
+      panel: COLORS.cream, // box fills, alt rows
+      panelEdge: COLORS.creamDark, // box borders
+      white: WHITE,
+      text: COLORS.text,
+      muted: COLORS.muted,
+      red: RED,
+    },
+    font: { display: "helvetica", body: "helvetica" },
+  },
+  corporate: {
+    key: "corporate",
+    minimal: true,
+    c: {
+      primary: { r: 26, g: 26, b: 26 }, // near-black ink for headings/rules
+      accent: { r: 130, g: 130, b: 130 }, // grey hairlines / labels
+      panel: { r: 248, g: 248, b: 246 }, // barely-there alt row tint
+      panelEdge: { r: 219, g: 217, b: 213 }, // hairline borders
+      white: WHITE,
+      text: { r: 26, g: 26, b: 26 },
+      muted: { r: 118, g: 118, b: 118 },
+      red: RED,
+    },
+    // Times (serif) for display lines reads more corporate/editorial; the body
+    // stays Helvetica for clean tabular figures.
+    font: { display: "times", body: "helvetica" },
+  },
+};
+
+export function getTheme(name) {
+  return THEMES[name] || THEMES.classic;
+}
 
 // One full tracking period = 7 days (deliver daily, settle weekly).
 export const PERIOD_DAYS = 7;

@@ -87,6 +87,7 @@ function normalizeSettings(saved) {
     items,
     vatRate,
     header: { ...DEFAULT_SETTINGS.header, ...(s.header || {}) },
+    theme: s.theme === "corporate" ? "corporate" : "classic",
   };
 }
 

@@ -1,41 +1,18 @@
 // invoicePdf.js — single tax-invoice PDF for one delivery (jsPDF).
-// Navy/gold theme, A4, all measurements in mm. No autotable — the one-row
-// items table is drawn by hand so the styling matches the weekly statement.
+// Themed via settings.theme (classic navy/gold OR corporate minimal). A4, all
+// measurements in mm. No autotable — the items table is drawn by hand so the
+// styling tracks the weekly statement and the active theme.
 import {
-  PAGE, C, newDoc, fill, stroke, ink,
-  drawHeader, drawTitle, drawSignature, drawFooter, drawLetterheadBg, moneyRow,
+  PAGE, newDoc, fill, stroke, ink, getTheme,
+  drawHeader, drawTitle, drawSignature, drawFooter, drawLetterheadBg,
+  partyBox, tableHeadBand, totalBox, moneyRow,
 } from "./pdfShared.js";
 import { money, dateLong, invoiceNo, totals, orderLines } from "./format.js";
 
-function partyBox(doc, x, y, w, title, lines) {
-  const headerH = 7;
-  const bodyH = 36;
-  // navy header bar
-  fill(doc, C.navy);
-  doc.roundedRect(x, y, w, headerH, 1.5, 1.5, "F");
-  ink(doc, C.white);
-  doc.setFont("helvetica", "bold").setFontSize(8.5);
-  doc.text(title, x + 4, y + 4.8);
-  // cream body
-  fill(doc, C.cream);
-  stroke(doc, C.creamDark);
-  doc.setLineWidth(0.3);
-  doc.roundedRect(x, y + headerH, w, bodyH, 1.5, 1.5, "FD");
-
-  let ly = y + headerH + 6;
-  for (const ln of lines) {
-    if (!ln || !ln.text) continue;
-    ink(doc, ln.gold ? C.navy : C.text);
-    doc.setFont("helvetica", ln.bold ? "bold" : "normal").setFontSize(ln.size || 8.5);
-    const wrapped = doc.splitTextToSize(ln.text, w - 8);
-    doc.text(wrapped, x + 4, ly);
-    ly += wrapped.length * (ln.size ? ln.size * 0.45 : 4.1);
-  }
-  return y + headerH + bodyH;
-}
-
 export function buildInvoice({ order, date, index, settings, sig, letterhead }) {
   const { seller, buyer, vatRate } = settings;
+  const T = getTheme(settings.theme);
+  const c = T.c;
   const useLh = !!(letterhead && letterhead.dataUrl);
   const doc = newDoc();
   const { w, margin } = PAGE;
@@ -47,37 +24,37 @@ export function buildInvoice({ order, date, index, settings, sig, letterhead }) 
     drawLetterheadBg(doc, letterhead);
     titleY = (letterhead.marginTop || 40) + 8; // start below the letterhead's own header
   } else {
-    drawHeader(doc, seller);
+    drawHeader(doc, seller, T);
     titleY = 42;
   }
 
   // title
-  drawTitle(doc, "TAX INVOICE", titleY);
+  drawTitle(doc, "TAX INVOICE", titleY, T);
 
   // meta row
   const metaY = titleY + 11;
-  ink(doc, C.text);
-  doc.setFont("helvetica", "bold").setFontSize(9.5);
+  ink(doc, c.text);
+  doc.setFont(T.font.body, "bold").setFontSize(9.5);
   doc.text(`Invoice No: ${invoiceNo(date, index)}`, margin, metaY);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(T.font.body, "normal");
   doc.text(`Date: ${dateLong(date)}`, rightX, metaY, { align: "right" });
 
-  // party boxes
+  // party boxes — BOTH parties shown (seller + buyer)
   const boxW = 82;
   const gap = w - margin * 2 - boxW * 2; // remaining space becomes the gutter
   const leftX = margin;
   const rightBoxX = margin + boxW + gap;
   const boxY = titleY + 16;
-  partyBox(doc, leftX, boxY, boxW, "FROM (SELLER)", [
+  partyBox(doc, T, leftX, boxY, boxW, "FROM (SELLER)", [
     { text: seller.name, bold: true, size: 9.5 },
-    // seller.nameAr is intentionally not drawn: jsPDF's built-in Helvetica
-    // can't render Arabic glyphs (would print as mojibake).
+    // seller.nameAr is intentionally not drawn: jsPDF's built-in fonts can't
+    // render Arabic glyphs (would print as mojibake).
     { text: seller.address },
     { text: seller.phone },
     { text: seller.email },
     { text: `TRN: ${seller.trn}`, bold: true },
   ]);
-  partyBox(doc, rightBoxX, boxY, boxW, "BILL TO (BUYER)", [
+  partyBox(doc, T, rightBoxX, boxY, boxW, "BILL TO (BUYER)", [
     { text: buyer.name, bold: true, size: 9.5 },
     { text: buyer.address || "—" },
     { text: `Tel: ${buyer.phone}` },
@@ -86,37 +63,43 @@ export function buildInvoice({ order, date, index, settings, sig, letterhead }) 
 
   // ---- delivery site band (the supply location for THIS delivery) ----
   const bandY = boxY + 7 + 36 + 6; // just below the two party boxes
-  fill(doc, C.cream);
-  stroke(doc, C.creamDark);
-  doc.setLineWidth(0.3);
-  doc.roundedRect(margin, bandY, w - margin * 2, 9, 1.5, 1.5, "FD");
-  fill(doc, C.gold);
-  doc.rect(margin, bandY, 1.6, 9, "F"); // gold accent edge
-  ink(doc, C.navy);
-  doc.setFont("helvetica", "bold").setFontSize(8);
-  doc.text("DELIVERY SITE", margin + 5, bandY + 5.7);
-  ink(doc, C.text);
-  doc.setFont("helvetica", "bold").setFontSize(10);
-  doc.text(order.location || "—", margin + 35, bandY + 5.9);
+  if (T.minimal) {
+    ink(doc, c.muted);
+    doc.setFont(T.font.body, "bold").setFontSize(8);
+    doc.text("DELIVERY SITE", margin, bandY + 5.7);
+    ink(doc, c.text);
+    doc.setFont(T.font.body, "bold").setFontSize(10);
+    doc.text(order.location || "—", margin + 35, bandY + 5.9);
+    stroke(doc, c.panelEdge);
+    doc.setLineWidth(0.3);
+    doc.line(margin, bandY + 9, w - margin, bandY + 9);
+  } else {
+    fill(doc, c.panel);
+    stroke(doc, c.panelEdge);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(margin, bandY, w - margin * 2, 9, 1.5, 1.5, "FD");
+    fill(doc, c.accent);
+    doc.rect(margin, bandY, 1.6, 9, "F"); // gold accent edge
+    ink(doc, c.primary);
+    doc.setFont("helvetica", "bold").setFontSize(8);
+    doc.text("DELIVERY SITE", margin + 5, bandY + 5.7);
+    ink(doc, c.text);
+    doc.setFont("helvetica", "bold").setFontSize(10);
+    doc.text(order.location || "—", margin + 35, bandY + 5.9);
+  }
 
   // ---- items table ----
   const tableTop = bandY + 9 + 6; // below the delivery band
   const tableW = w - margin * 2;
   const qtyR = 126, unitR = 162, amtR = rightX;
 
-  fill(doc, C.navy);
-  doc.rect(margin, tableTop, tableW, 8, "F");
-  ink(doc, C.white);
-  doc.setFont("helvetica", "bold").setFontSize(8.5);
-  doc.text("#", margin + 4, tableTop + 5.3);
-  doc.text("Description", margin + 14, tableTop + 5.3);
-  doc.text("Qty", qtyR, tableTop + 5.3, { align: "right" });
-  doc.text("Unit Price (AED)", unitR, tableTop + 5.3, { align: "right" });
-  doc.text("Amount (AED)", amtR, tableTop + 5.3, { align: "right" });
-
-  stroke(doc, C.gold);
-  doc.setLineWidth(0.6);
-  doc.line(margin, tableTop + 8, w - margin, tableTop + 8);
+  tableHeadBand(doc, T, margin, tableTop, tableW, 8, [
+    { text: "#", x: margin + 4 },
+    { text: "Description", x: margin + 14 },
+    { text: "Qty", x: qtyR, align: "right" },
+    { text: "Unit Price (AED)", x: unitR, align: "right" },
+    { text: "Amount (AED)", x: amtR, align: "right" },
+  ]);
 
   // one row per line item
   const lns = orderLines(order);
@@ -125,11 +108,11 @@ export function buildInvoice({ order, date, index, settings, sig, letterhead }) 
   lns.forEach((l, i) => {
     const ry = rowsTop + i * rowH;
     if (i % 2 === 1) {
-      fill(doc, C.cream);
+      fill(doc, c.panel);
       doc.rect(margin, ry, tableW, rowH, "F");
     }
-    ink(doc, C.text);
-    doc.setFont("helvetica", "normal").setFontSize(9);
+    ink(doc, c.text);
+    doc.setFont(T.font.body, "normal").setFontSize(9);
     const by = ry + 5.6;
     doc.text(String(i + 1), margin + 4, by);
     doc.text(l.item || "", margin + 14, by);
@@ -139,37 +122,34 @@ export function buildInvoice({ order, date, index, settings, sig, letterhead }) 
   });
 
   const tableBottom = rowsTop + lns.length * rowH;
-  stroke(doc, C.navy);
+  stroke(doc, T.minimal ? c.muted : c.primary);
   doc.setLineWidth(0.5);
   doc.line(margin, tableBottom, w - margin, tableBottom);
 
   // ---- totals ----
   const t = totals([order], vatRate);
   let ty = tableBottom + 9;
-  moneyRow(doc, "Subtotal", t.subtotal, rightX, ty);
+  moneyRow(doc, "Subtotal", t.subtotal, rightX, ty, { color: c.text, font: T.font.body });
   ty += 6;
-  moneyRow(doc, `VAT (${vatRate}%)`, t.vat, rightX, ty);
+  moneyRow(doc, `VAT (${vatRate}%)`, t.vat, rightX, ty, { color: c.text, font: T.font.body });
   ty += 3;
-  stroke(doc, C.navy);
-  doc.setLineWidth(0.4);
-  doc.line(rightX - 70, ty, rightX, ty);
+  if (!T.minimal) {
+    stroke(doc, c.primary);
+    doc.setLineWidth(0.4);
+    doc.line(rightX - 70, ty, rightX, ty);
+  }
   ty += 4;
-  fill(doc, C.navy);
-  doc.roundedRect(rightX - 70, ty, 70, 10, 1.5, 1.5, "F");
-  ink(doc, C.white);
-  doc.setFont("helvetica", "bold").setFontSize(11);
-  doc.text("TOTAL", rightX - 66, ty + 6.6);
-  doc.text(`AED ${money(t.total)}`, rightX - 4, ty + 6.6, { align: "right" });
+  totalBox(doc, T, rightX - 70, ty, 70, 10, "TOTAL", `AED ${money(t.total)}`, 11);
 
   // quantity summary (left, aligned with the TOTAL box)
-  ink(doc, C.navy);
-  doc.setFont("helvetica", "bold").setFontSize(8);
+  ink(doc, T.minimal ? c.muted : c.primary);
+  doc.setFont(T.font.body, "bold").setFontSize(8);
   doc.text(`Total Quantity Supplied: ${t.qty} Parcels`, margin, ty + 6.6);
 
   // ---- terms ----
   const termsY = ty + 22;
-  ink(doc, C.muted);
-  doc.setFont("helvetica", "normal").setFontSize(7.5);
+  ink(doc, c.muted);
+  doc.setFont(T.font.body, "normal").setFontSize(7.5);
   doc.text("All amounts are in AED (United Arab Emirates Dirham), inclusive of 5% VAT where applicable.", margin, termsY);
   doc.text("This is a computer-generated tax invoice and is valid without a physical signature.", margin, termsY + 4);
   doc.text("Payment due on receipt. Thank you for your business.", margin, termsY + 8);
@@ -180,8 +160,8 @@ export function buildInvoice({ order, date, index, settings, sig, letterhead }) 
   const sigLineY = useLh
     ? PAGE.h - (letterhead.marginBottom || 20) - 8
     : Math.min(termsY + 30, PAGE.h - 24);
-  drawSignature(doc, sig, rightX, sigLineY);
-  if (!useLh) drawFooter(doc, seller);
+  drawSignature(doc, sig, rightX, sigLineY, T);
+  if (!useLh) drawFooter(doc, seller, T);
 
   return doc;
 }

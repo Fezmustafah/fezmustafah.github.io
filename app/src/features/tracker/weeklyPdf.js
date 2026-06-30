@@ -1,36 +1,34 @@
 // weeklyPdf.js — consolidated Weekly Statement PDF (jsPDF). Lists every daily
 // invoice in the tracking period chronologically, with grand totals + VAT.
 // Manual table drawing with pagination (avoids the autotable page-break
-// background gotcha) so the navy header repeats cleanly on every page.
+// background gotcha) so the header repeats cleanly on every page. Themed via
+// settings.theme (classic navy/gold OR corporate minimal).
 import {
-  PAGE, C, newDoc, fill, stroke, ink,
+  PAGE, newDoc, fill, stroke, ink, getTheme,
   drawHeader, drawTitle, drawSignature, drawFooter, drawLetterheadBg,
+  partyBox, tableHeadBand, totalBox,
 } from "./pdfShared.js";
 import { money, dateShort, dateLong, invoiceNo, totals } from "./format.js";
 
 const COLS = { num: 18, inv: 24, date: 60, loc: 88, qtyR: 168, amtR: 196 };
 const ROW_H = 7;
 
-function tableHead(doc, y) {
+function tableHead(doc, T, y) {
   const { margin, w } = PAGE;
-  fill(doc, C.navy);
-  doc.rect(margin, y, w - margin * 2, 8, "F");
-  ink(doc, C.white);
-  doc.setFont("helvetica", "bold").setFontSize(8);
-  doc.text("#", COLS.num, y + 5.3, { align: "center" });
-  doc.text("Invoice No", COLS.inv, y + 5.3);
-  doc.text("Date", COLS.date, y + 5.3);
-  doc.text("Location", COLS.loc, y + 5.3);
-  doc.text("Qty", COLS.qtyR, y + 5.3, { align: "right" });
-  doc.text("Amount (AED)", COLS.amtR, y + 5.3, { align: "right" });
-  stroke(doc, C.gold);
-  doc.setLineWidth(0.6);
-  doc.line(margin, y + 8, w - margin, y + 8);
-  return y + 8;
+  return tableHeadBand(doc, T, margin, y, w - margin * 2, 8, [
+    { text: "#", x: COLS.num, align: "center" },
+    { text: "Invoice No", x: COLS.inv },
+    { text: "Date", x: COLS.date },
+    { text: "Location", x: COLS.loc },
+    { text: "Qty", x: COLS.qtyR, align: "right" },
+    { text: "Amount (AED)", x: COLS.amtR, align: "right" },
+  ]);
 }
 
 export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, letterhead }) {
   const { seller, buyer, vatRate } = settings;
+  const T = getTheme(settings.theme);
+  const c = T.c;
   const useLh = !!(letterhead && letterhead.dataUrl);
   const doc = newDoc();
   const { w, margin } = PAGE;
@@ -38,13 +36,13 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
 
   const bodyBottom = useLh ? PAGE.h - (letterhead.marginBottom || 20) - 6 : PAGE.h - 16;
   const contTop = useLh ? (letterhead.marginTop || 40) + 6 : 38; // table top on continuation pages
-  const endPage = () => { if (!useLh) drawFooter(doc, seller); };
+  const endPage = () => { if (!useLh) drawFooter(doc, seller, T); };
   const startContPage = () => {
     endPage();
     doc.addPage();
     if (useLh) drawLetterheadBg(doc, letterhead);
-    else drawHeader(doc, seller);
-    return tableHead(doc, contTop);
+    else drawHeader(doc, seller, T);
+    return tableHead(doc, T, contTop);
   };
 
   let titleY;
@@ -52,24 +50,36 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
     drawLetterheadBg(doc, letterhead);
     titleY = (letterhead.marginTop || 40) + 8;
   } else {
-    drawHeader(doc, seller);
+    drawHeader(doc, seller, T);
     titleY = 42;
   }
-  drawTitle(doc, "WEEKLY STATEMENT", titleY);
+  drawTitle(doc, "WEEKLY STATEMENT", titleY, T);
 
-  ink(doc, C.text);
-  doc.setFont("helvetica", "normal").setFontSize(9.5);
+  // period (centered under the title)
+  ink(doc, c.text);
+  doc.setFont(T.font.body, "normal").setFontSize(9.5);
   doc.text(`Period: ${dateShort(periodStart)} — ${dateShort(periodEnd)}`, w / 2, titleY + 8, { align: "center" });
-  ink(doc, C.navy);
-  doc.setFont("helvetica", "bold").setFontSize(9.5);
-  doc.text(`${buyer.name}     TRN: ${buyer.trn}`, w / 2, titleY + 14, { align: "center" });
-  if (buyer.address) {
-    ink(doc, C.muted);
-    doc.setFont("helvetica", "normal").setFontSize(8);
-    doc.text(buyer.address.replace(/\n/g, ", "), w / 2, titleY + 19, { align: "center" });
-  }
 
-  let y = tableHead(doc, titleY + 24);
+  // ---- BOTH parties: seller + buyer boxes (matches the invoice) ----
+  const boxW = 82;
+  const gap = w - margin * 2 - boxW * 2;
+  const rightBoxX = margin + boxW + gap;
+  const boxY = titleY + 13;
+  partyBox(doc, T, margin, boxY, boxW, "FROM (SELLER)", [
+    { text: seller.name, bold: true, size: 9.5 },
+    { text: seller.address },
+    { text: seller.phone },
+    { text: seller.email },
+    { text: `TRN: ${seller.trn}`, bold: true },
+  ]);
+  partyBox(doc, T, rightBoxX, boxY, boxW, "BILL TO (BUYER)", [
+    { text: buyer.name, bold: true, size: 9.5 },
+    { text: buyer.address ? buyer.address.replace(/\n/g, ", ") : "—" },
+    { text: `Tel: ${buyer.phone}` },
+    { text: `TRN: ${buyer.trn}`, bold: true },
+  ]);
+
+  let y = tableHead(doc, T, boxY + 43 + 6); // 43 = party box footprint
 
   rows.forEach((r, i) => {
     // page break before a row that wouldn't fit
@@ -77,11 +87,11 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
       y = startContPage();
     }
     if (i % 2 === 1) {
-      fill(doc, C.cream);
+      fill(doc, c.panel);
       doc.rect(margin, y, w - margin * 2, ROW_H, "F");
     }
-    ink(doc, C.text);
-    doc.setFont("helvetica", "normal").setFontSize(8);
+    ink(doc, c.text);
+    doc.setFont(T.font.body, "normal").setFontSize(8);
     const by = y + 4.8;
     doc.text(String(i + 1), COLS.num, by, { align: "center" });
     doc.text(invoiceNo(r.date, r.index), COLS.inv, by);
@@ -93,7 +103,7 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
     y += ROW_H;
   });
 
-  stroke(doc, C.navy);
+  stroke(doc, T.minimal ? c.muted : c.primary);
   doc.setLineWidth(0.5);
   doc.line(margin, y, w - margin, y);
 
@@ -103,29 +113,24 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
     endPage();
     doc.addPage();
     if (useLh) drawLetterheadBg(doc, letterhead);
-    else drawHeader(doc, seller);
+    else drawHeader(doc, seller, T);
     y = contTop;
   }
   let ty = y + 10;
-  ink(doc, C.text);
-  doc.setFont("helvetica", "normal").setFontSize(9.5);
+  ink(doc, c.text);
+  doc.setFont(T.font.body, "normal").setFontSize(9.5);
   doc.text("Subtotal", rightX - 55, ty);
   doc.text(`AED ${money(t.subtotal)}`, rightX, ty, { align: "right" });
   ty += 6;
   doc.text(`VAT (${vatRate}%)`, rightX - 55, ty);
   doc.text(`AED ${money(t.vat)}`, rightX, ty, { align: "right" });
   ty += 4;
-  fill(doc, C.navy);
-  doc.roundedRect(rightX - 80, ty, 80, 11, 1.5, 1.5, "F");
-  ink(doc, C.white);
-  doc.setFont("helvetica", "bold").setFontSize(12);
-  doc.text("GRAND TOTAL", rightX - 76, ty + 7.2);
-  doc.text(`AED ${money(t.total)}`, rightX - 4, ty + 7.2, { align: "right" });
+  totalBox(doc, T, rightX - 80, ty, 80, 11, "GRAND TOTAL", `AED ${money(t.total)}`, 12);
 
   // stats line (left)
   const days = new Set(rows.map((r) => r.date)).size;
-  ink(doc, C.navy);
-  doc.setFont("helvetica", "bold").setFontSize(8.5);
+  ink(doc, T.minimal ? c.muted : c.primary);
+  doc.setFont(T.font.body, "bold").setFontSize(8.5);
   doc.text(
     `Total Parcels: ${t.qty}    |    Total Invoices: ${rows.length}    |    Days: ${days}`,
     margin,
@@ -133,8 +138,8 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
   );
 
   const sigLineY = useLh ? PAGE.h - (letterhead.marginBottom || 20) - 8 : Math.min(ty + 34, PAGE.h - 24);
-  drawSignature(doc, sig, rightX, sigLineY);
-  if (!useLh) drawFooter(doc, seller);
+  drawSignature(doc, sig, rightX, sigLineY, T);
+  if (!useLh) drawFooter(doc, seller, T);
   return doc;
 }
 

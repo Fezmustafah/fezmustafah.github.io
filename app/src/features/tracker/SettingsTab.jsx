@@ -43,6 +43,8 @@ export default function SettingsTab({ settings, onSave, letterheads = [] }) {
     setDraft((d) => ({ ...d, header: { ...d.header, ...patch } }));
     setSaved(false);
   };
+  const theme = draft.theme === "corporate" ? "corporate" : "classic";
+  const setTheme = (t) => { setDraft((d) => ({ ...d, theme: t })); setSaved(false); };
 
   const items = draft.items || [];
   const setItem = (i, key, v) => {
@@ -188,6 +190,34 @@ export default function SettingsTab({ settings, onSave, letterheads = [] }) {
             />
           </label>
         </div>
+      </Card>
+
+      <Card title="Document style">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setTheme("classic")}
+            className={
+              "rounded-lg border p-3 text-left text-sm transition " +
+              (theme === "classic" ? "border-tgold bg-tcream ring-2 ring-tgold/30" : "border-tcreamDark hover:border-tgold/50")
+            }
+          >
+            <span className="block font-semibold text-tnavy">Classic</span>
+            <span className="text-xs text-slate">Colourful navy &amp; gold theme with filled bars.</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTheme("corporate")}
+            className={
+              "rounded-lg border p-3 text-left text-sm transition " +
+              (theme === "corporate" ? "border-tgold bg-tcream ring-2 ring-tgold/30" : "border-tcreamDark hover:border-tgold/50")
+            }
+          >
+            <span className="block font-semibold text-tnavy">Corporate</span>
+            <span className="text-xs text-slate">Minimal monochrome, serif headings, hairline rules.</span>
+          </button>
+        </div>
+        <p className="mt-2 text-[11px] text-slate">Applies to both the daily tax invoice and the weekly statement PDFs.</p>
       </Card>
 
       <Card title="Invoice header">

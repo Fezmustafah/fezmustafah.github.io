@@ -1,4 +1,5 @@
 // WeeklyTab — table of every tracked invoice + consolidated statement download.
+import { useState } from "react";
 import { downloadWeekly } from "./weeklyPdf.js";
 import { money, dateShort, invoiceNo, totals } from "./format.js";
 import SignatureStrip from "./SignatureStrip.jsx";
@@ -10,9 +11,17 @@ export default function WeeklyTab({
   const t = totals(rows.map((r) => r.order), settings.vatRate);
   const days = new Set(rows.map((r) => r.date)).size;
 
+  // Which company this statement is billed to. Defaults to the saved active
+  // buyer but can be switched here per-download WITHOUT changing the saved
+  // default (Settings owns that). Choosing here only affects the printed PDF.
+  const buyers = settings.buyers && settings.buyers.length ? settings.buyers : [settings.buyer];
+  const [weeklyBuyerId, setWeeklyBuyerId] = useState(settings.buyerId || buyers[0]?.id);
+  const statementBuyer = buyers.find((b) => b.id === weeklyBuyerId) || settings.buyer;
+
   function downloadStatement() {
     if (!rows.length) return;
-    downloadWeekly({ rows, settings, periodStart, periodEnd, sig: activeSig, letterhead });
+    const stSettings = { ...settings, buyer: { ...statementBuyer } };
+    downloadWeekly({ rows, settings: stSettings, periodStart, periodEnd, sig: activeSig, letterhead });
   }
   function clearWeek() {
     if (window.confirm("Clear all tracked orders and start a new week? This cannot be undone.")) {
@@ -34,7 +43,18 @@ export default function WeeklyTab({
         <h3 className="text-sm font-bold text-tnavy">
           Period: {dateShort(periodStart)} — {dateShort(periodEnd)}
         </h3>
-        <span className="text-xs text-slate">{settings.buyer.name}</span>
+        <label className="flex items-center gap-2">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-tnavy/70">Bill to</span>
+          <select
+            value={weeklyBuyerId}
+            onChange={(e) => setWeeklyBuyerId(e.target.value)}
+            className="rounded-lg border border-tcreamDark bg-white px-3 py-1.5 text-sm text-tnavy outline-none focus:border-tgold focus:ring-2 focus:ring-tgold/30"
+          >
+            {buyers.map((b) => (
+              <option key={b.id} value={b.id}>{b.name || "Unnamed company"}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-tcreamDark">
