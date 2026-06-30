@@ -30,6 +30,52 @@ function Card({ title, children }) {
   );
 }
 
+// Editable list of custom label/value fields for a party. Empty rows are kept
+// while editing and dropped from the PDF (see format.extraLines).
+function ExtraFields({ fields, onChange }) {
+  const inputCls =
+    "rounded-lg border border-tcreamDark bg-white px-3 py-2 text-sm outline-none focus:border-tgold focus:ring-2 focus:ring-tgold/30";
+  const set = (i, key, v) => onChange(fields.map((f, idx) => (idx === i ? { ...f, [key]: v } : f)));
+  const add = () => onChange([...fields, { label: "", value: "" }]);
+  const remove = (i) => onChange(fields.filter((_, idx) => idx !== i));
+  return (
+    <div className="space-y-2 border-t border-tcreamDark pt-3">
+      <span className="block text-[11px] font-bold uppercase tracking-wider text-tnavy/70">Custom fields</span>
+      {fields.map((f, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <input
+            value={f.label}
+            onChange={(e) => set(i, "label", e.target.value)}
+            placeholder="Label (e.g. Phone 2)"
+            className={inputCls + " w-2/5"}
+          />
+          <input
+            value={f.value}
+            onChange={(e) => set(i, "value", e.target.value)}
+            placeholder="Value"
+            className={inputCls + " flex-1"}
+          />
+          <button
+            type="button"
+            onClick={() => remove(i)}
+            title="Remove field"
+            className="rounded-lg px-2.5 py-2 text-lg font-bold text-[#C0392B] hover:bg-red-50"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={add}
+        className="rounded-lg border border-tnavy px-3 py-1.5 text-sm font-semibold text-tnavy hover:bg-tcream"
+      >
+        + Add field
+      </button>
+    </div>
+  );
+}
+
 export default function SettingsTab({ settings, onSave, letterheads = [] }) {
   const [draft, setDraft] = useState(settings);
   const [saved, setSaved] = useState(false);
@@ -45,6 +91,16 @@ export default function SettingsTab({ settings, onSave, letterheads = [] }) {
   };
   const theme = draft.theme === "corporate" ? "corporate" : "classic";
   const setTheme = (t) => { setDraft((d) => ({ ...d, theme: t })); setSaved(false); };
+
+  // custom fields: seller (object) + active buyer (roster entry)
+  const setSellerExtra = (next) => {
+    setDraft((d) => ({ ...d, seller: { ...d.seller, extra: next } }));
+    setSaved(false);
+  };
+  const setBuyerExtra = (next) => {
+    setDraft((d) => ({ ...d, buyers: d.buyers.map((b) => (b.id === d.buyerId ? { ...b, extra: next } : b)) }));
+    setSaved(false);
+  };
 
   const items = draft.items || [];
   const setItem = (i, key, v) => {
@@ -110,6 +166,7 @@ export default function SettingsTab({ settings, onSave, letterheads = [] }) {
           <Field label="Phone" value={draft.seller.phone} onChange={set("seller", "phone")} />
           <Field label="Email" value={draft.seller.email} onChange={set("seller", "email")} />
           <Field label="TRN" value={draft.seller.trn} onChange={set("seller", "trn")} />
+          <ExtraFields fields={draft.seller.extra || []} onChange={setSellerExtra} />
         </Card>
         <Card title="Buyer">
           <div className="flex items-end gap-2">
@@ -134,6 +191,7 @@ export default function SettingsTab({ settings, onSave, letterheads = [] }) {
           <Field label="Registered address (tax notice)" value={activeBuyer.address || ""} onChange={setBuyerField("address")} multiline />
           <Field label="Phone" value={activeBuyer.phone || ""} onChange={setBuyerField("phone")} />
           <Field label="TRN" value={activeBuyer.trn || ""} onChange={setBuyerField("trn")} />
+          <ExtraFields fields={activeBuyer.extra || []} onChange={setBuyerExtra} />
           <p className="text-[11px] text-slate">The selected company is used on all invoices &amp; the weekly statement.</p>
         </Card>
       </div>

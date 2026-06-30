@@ -6,9 +6,9 @@
 import {
   PAGE, newDoc, fill, stroke, ink, resolveTheme,
   drawHeader, drawTitle, drawSignature, drawFooter, drawLetterheadBg,
-  partyBox, tableHeadBand, totalBox,
+  partyBox, partyBodyHeight, PARTY_HEADER_H, tableHeadBand, totalBox,
 } from "./pdfShared.js";
-import { money, dateShort, dateLong, invoiceNo, totals } from "./format.js";
+import { money, dateShort, dateLong, invoiceNo, totals, extraLines } from "./format.js";
 
 const COLS = { num: 18, inv: 24, date: 60, loc: 88, qtyR: 168, amtR: 196 };
 const ROW_H = 7;
@@ -65,21 +65,29 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
   const gap = w - margin * 2 - boxW * 2;
   const rightBoxX = margin + boxW + gap;
   const boxY = titleY + 13;
-  partyBox(doc, T, margin, boxY, boxW, "FROM (SELLER)", [
+  const sellerLines = [
     { text: seller.name, bold: true, size: 9.5 },
     { text: seller.address },
     { text: seller.phone },
     { text: seller.email },
     { text: `TRN: ${seller.trn}`, bold: true },
-  ]);
-  partyBox(doc, T, rightBoxX, boxY, boxW, "BILL TO (BUYER)", [
+    ...extraLines(seller),
+  ];
+  const buyerLines = [
     { text: buyer.name, bold: true, size: 9.5 },
     { text: buyer.address ? buyer.address.replace(/\n/g, ", ") : "—" },
     { text: `Tel: ${buyer.phone}` },
     { text: `TRN: ${buyer.trn}`, bold: true },
-  ]);
+    ...extraLines(buyer),
+  ];
+  const bodyH = Math.max(
+    partyBodyHeight(doc, T, boxW, sellerLines),
+    partyBodyHeight(doc, T, boxW, buyerLines),
+  );
+  partyBox(doc, T, margin, boxY, boxW, "FROM (SELLER)", sellerLines, bodyH);
+  partyBox(doc, T, rightBoxX, boxY, boxW, "BILL TO (BUYER)", buyerLines, bodyH);
 
-  let y = tableHead(doc, T, boxY + 43 + 6); // 43 = party box footprint
+  let y = tableHead(doc, T, boxY + PARTY_HEADER_H + bodyH + 6);
 
   rows.forEach((r, i) => {
     // page break before a row that wouldn't fit

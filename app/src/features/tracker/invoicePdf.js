@@ -5,9 +5,9 @@
 import {
   PAGE, newDoc, fill, stroke, ink, resolveTheme,
   drawHeader, drawTitle, drawSignature, drawFooter, drawLetterheadBg,
-  partyBox, tableHeadBand, totalBox, moneyRow,
+  partyBox, partyBodyHeight, PARTY_HEADER_H, tableHeadBand, totalBox, moneyRow,
 } from "./pdfShared.js";
-import { money, dateLong, invoiceNo, totals, orderLines } from "./format.js";
+import { money, dateLong, invoiceNo, totals, orderLines, extraLines } from "./format.js";
 
 export function buildInvoice({ order, date, index, settings, sig, letterhead }) {
   const { seller, buyer, vatRate } = settings;
@@ -39,13 +39,14 @@ export function buildInvoice({ order, date, index, settings, sig, letterhead }) 
   doc.setFont(T.font.body, "normal");
   doc.text(`Date: ${dateLong(date)}`, rightX, metaY, { align: "right" });
 
-  // party boxes — BOTH parties shown (seller + buyer)
+  // party boxes — BOTH parties shown (seller + buyer), each with optional
+  // custom fields appended after the fixed ones.
   const boxW = 82;
   const gap = w - margin * 2 - boxW * 2; // remaining space becomes the gutter
   const leftX = margin;
   const rightBoxX = margin + boxW + gap;
   const boxY = titleY + 16;
-  partyBox(doc, T, leftX, boxY, boxW, "FROM (SELLER)", [
+  const sellerLines = [
     { text: seller.name, bold: true, size: 9.5 },
     // seller.nameAr is intentionally not drawn: jsPDF's built-in fonts can't
     // render Arabic glyphs (would print as mojibake).
@@ -53,16 +54,25 @@ export function buildInvoice({ order, date, index, settings, sig, letterhead }) 
     { text: seller.phone },
     { text: seller.email },
     { text: `TRN: ${seller.trn}`, bold: true },
-  ]);
-  partyBox(doc, T, rightBoxX, boxY, boxW, "BILL TO (BUYER)", [
+    ...extraLines(seller),
+  ];
+  const buyerLines = [
     { text: buyer.name, bold: true, size: 9.5 },
     { text: buyer.address || "—" },
     { text: `Tel: ${buyer.phone}` },
     { text: `TRN: ${buyer.trn}`, bold: true },
-  ]);
+    ...extraLines(buyer),
+  ];
+  // size both boxes to the taller column so they stay aligned
+  const bodyH = Math.max(
+    partyBodyHeight(doc, T, boxW, sellerLines),
+    partyBodyHeight(doc, T, boxW, buyerLines),
+  );
+  partyBox(doc, T, leftX, boxY, boxW, "FROM (SELLER)", sellerLines, bodyH);
+  partyBox(doc, T, rightBoxX, boxY, boxW, "BILL TO (BUYER)", buyerLines, bodyH);
 
   // ---- delivery site band (the supply location for THIS delivery) ----
-  const bandY = boxY + 7 + 36 + 6; // just below the two party boxes
+  const bandY = boxY + PARTY_HEADER_H + bodyH + 6; // just below the two party boxes
   if (T.minimal) {
     ink(doc, c.muted);
     doc.setFont(T.font.body, "bold").setFontSize(8);

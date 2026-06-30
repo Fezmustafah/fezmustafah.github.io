@@ -63,6 +63,12 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 
 // fill defaults + migrate old shapes: single `item` -> items[] + vatRate, and a
 // single `buyer` -> buyers[] roster + active buyerId.
+function sanitizeExtra(extra) {
+  return Array.isArray(extra)
+    ? extra.map((f) => ({ label: String(f?.label || ""), value: String(f?.value || "") }))
+    : [];
+}
+
 function normalizeSettings(saved) {
   const s = saved || {};
   const items = Array.isArray(s.items) && s.items.length
@@ -74,16 +80,16 @@ function normalizeSettings(saved) {
 
   // buyer roster
   let buyers = Array.isArray(s.buyers) && s.buyers.length
-    ? s.buyers.map((b) => ({ id: b.id || uid(), ...DEFAULT_SETTINGS.buyer, ...b }))
-    : [{ id: "default", ...DEFAULT_SETTINGS.buyer, ...(s.buyer || {}) }];
+    ? s.buyers.map((b) => ({ id: b.id || uid(), ...DEFAULT_SETTINGS.buyer, ...b, extra: sanitizeExtra(b.extra) }))
+    : [{ id: "default", ...DEFAULT_SETTINGS.buyer, ...(s.buyer || {}), extra: sanitizeExtra(s.buyer?.extra) }];
   const buyerId = s.buyerId && buyers.some((b) => b.id === s.buyerId) ? s.buyerId : buyers[0].id;
   const active = buyers.find((b) => b.id === buyerId) || buyers[0];
 
   return {
-    seller: { ...DEFAULT_SETTINGS.seller, ...(s.seller || {}) },
+    seller: { ...DEFAULT_SETTINGS.seller, ...(s.seller || {}), extra: sanitizeExtra(s.seller?.extra) },
     buyers,
     buyerId,
-    buyer: { ...DEFAULT_SETTINGS.buyer, ...active }, // active buyer, denormalised for the PDFs
+    buyer: { ...DEFAULT_SETTINGS.buyer, ...active }, // active buyer, denormalised for the PDFs (incl. extra)
     items,
     vatRate,
     header: { ...DEFAULT_SETTINGS.header, ...(s.header || {}) },

@@ -68,6 +68,15 @@ export function orderAmount(order) {
   return orderLines(order).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 }
 
+// Map a party's custom fields (seller/buyer `extra: [{label,value}]`) to PDF
+// body lines. Blank entries are dropped; label is optional.
+export function extraLines(party) {
+  const ex = (party && Array.isArray(party.extra)) ? party.extra : [];
+  return ex
+    .filter((f) => f && (f.value || f.label))
+    .map((f) => ({ text: f.label ? `${f.label}: ${f.value || ""}` : String(f.value || "") }));
+}
+
 // VAT / totals across a list of orders (each order may have multiple lines).
 export function totals(orders, vatRate) {
   const subtotal = orders.reduce((s, o) => s + orderAmount(o), 0);

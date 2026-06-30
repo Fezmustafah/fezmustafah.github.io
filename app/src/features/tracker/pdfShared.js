@@ -132,9 +132,30 @@ export function drawTitle(doc, title, y, T) {
 // 43mm) in BOTH themes so the surrounding layout maths is theme-independent.
 //   classic   — primary header bar + panel body, bordered.
 //   corporate — grey caps label over a hairline, plain text, no fills.
-const PARTY_HEADER_H = 7;
-const PARTY_BODY_H = 36;
-export function partyBox(doc, T, x, y, w, title, lines) {
+export const PARTY_HEADER_H = 7;
+const PARTY_BODY_MIN = 36;
+const lineStep = (ln) => (ln.size ? ln.size * 0.45 : 4.1);
+
+// Measure the body height (mm) a set of lines needs, so two boxes can be sized
+// to the taller of them (custom fields make line counts vary). Never shorter
+// than PARTY_BODY_MIN. `doc` must have a font set; we set it per line to wrap
+// accurately.
+export function partyBodyHeight(doc, T, w, lines) {
+  let sum = 0;
+  for (const ln of lines) {
+    if (!ln || !ln.text) continue;
+    doc.setFont(T.font.body, ln.bold ? "bold" : "normal").setFontSize(ln.size || 8.5);
+    const wrapped = doc.splitTextToSize(ln.text, T.minimal ? w : w - 8);
+    sum += wrapped.length * lineStep(ln);
+  }
+  return Math.max(PARTY_BODY_MIN, 6 + sum + 4); // top pad + content + bottom pad
+}
+
+// A labelled party box (FROM / BILL TO ...). `bodyH` lets the caller fix both
+// boxes to the same (tallest) height; omitted -> PARTY_BODY_MIN.
+//   classic   — primary header bar + panel body, bordered.
+//   corporate — (minimal flag) grey caps label over a hairline, plain text.
+export function partyBox(doc, T, x, y, w, title, lines, bodyH = PARTY_BODY_MIN) {
   const c = T.c;
 
   if (T.minimal) {
@@ -153,9 +174,9 @@ export function partyBox(doc, T, x, y, w, title, lines) {
       doc.setFont(T.font.body, ln.bold ? "bold" : "normal").setFontSize(ln.size || 8.5);
       const wrapped = doc.splitTextToSize(ln.text, w);
       doc.text(wrapped, x, ly);
-      ly += wrapped.length * (ln.size ? ln.size * 0.45 : 4.1);
+      ly += wrapped.length * lineStep(ln);
     }
-    return y + PARTY_HEADER_H + PARTY_BODY_H;
+    return y + PARTY_HEADER_H + bodyH;
   }
 
   // classic
@@ -168,7 +189,7 @@ export function partyBox(doc, T, x, y, w, title, lines) {
   fill(doc, c.panel);
   stroke(doc, c.panelEdge);
   doc.setLineWidth(0.3);
-  doc.roundedRect(x, y + PARTY_HEADER_H, w, PARTY_BODY_H, 1.5, 1.5, "FD");
+  doc.roundedRect(x, y + PARTY_HEADER_H, w, bodyH, 1.5, 1.5, "FD");
 
   let ly = y + PARTY_HEADER_H + 6;
   for (const ln of lines) {
@@ -177,9 +198,9 @@ export function partyBox(doc, T, x, y, w, title, lines) {
     doc.setFont("helvetica", ln.bold ? "bold" : "normal").setFontSize(ln.size || 8.5);
     const wrapped = doc.splitTextToSize(ln.text, w - 8);
     doc.text(wrapped, x + 4, ly);
-    ly += wrapped.length * (ln.size ? ln.size * 0.45 : 4.1);
+    ly += wrapped.length * lineStep(ln);
   }
-  return y + PARTY_HEADER_H + PARTY_BODY_H;
+  return y + PARTY_HEADER_H + bodyH;
 }
 
 // Table header band. `cols` = [{text, x, align}]. classic fills a primary bar
