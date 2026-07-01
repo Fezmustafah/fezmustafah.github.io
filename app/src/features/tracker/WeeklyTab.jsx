@@ -1,6 +1,7 @@
 // WeeklyTab — table of every tracked invoice + consolidated statement download.
 import { useState } from "react";
 import { downloadWeekly } from "./weeklyPdf.js";
+import { downloadStatementPack } from "./statementPack.js";
 import { money, dateShort, invoiceNo, totals } from "./format.js";
 import SignatureStrip from "./SignatureStrip.jsx";
 
@@ -17,11 +18,27 @@ export default function WeeklyTab({
   const buyers = settings.buyers && settings.buyers.length ? settings.buyers : [settings.buyer];
   const [weeklyBuyerId, setWeeklyBuyerId] = useState(settings.buyerId || buyers[0]?.id);
   const statementBuyer = buyers.find((b) => b.id === weeklyBuyerId) || settings.buyer;
+  const [building, setBuilding] = useState(false);
 
   function downloadStatement() {
     if (!rows.length) return;
     const stSettings = { ...settings, buyer: { ...statementBuyer } };
     downloadWeekly({ rows, settings: stSettings, periodStart, periodEnd, sig: activeSig, letterhead });
+  }
+
+  // Full pack: statement + a signed invoice for every line, merged to one PDF.
+  async function downloadPack() {
+    if (!rows.length || building) return;
+    const stSettings = { ...settings, buyer: { ...statementBuyer } };
+    setBuilding(true);
+    try {
+      await downloadStatementPack({ rows, settings: stSettings, periodStart, periodEnd, sig: activeSig, letterhead });
+    } catch (err) {
+      console.error("SoA pack failed", err);
+      window.alert("Could not build the SoA bundle. Please try again.");
+    } finally {
+      setBuilding(false);
+    }
   }
   function clearWeek() {
     if (window.confirm("Clear all tracked orders and start a new week? This cannot be undone.")) {
@@ -114,12 +131,23 @@ export default function WeeklyTab({
           Download Weekly Statement
         </button>
         <button
+          onClick={downloadPack}
+          disabled={building}
+          className="flex-1 rounded-lg border-2 border-tgold bg-tgold/10 px-4 py-3 text-sm font-bold text-tnavy transition hover:bg-tgold/20 disabled:cursor-wait disabled:opacity-60"
+        >
+          {building ? "Building bundle…" : "Download SoA + All Invoices"}
+        </button>
+        <button
           onClick={clearWeek}
           className="rounded-lg border border-[#C0392B] px-4 py-3 text-sm font-semibold text-[#C0392B] transition hover:bg-red-50"
         >
           Clear Week &amp; Start New
         </button>
       </div>
+      <p className="text-[11px] text-slate">
+        <b className="text-tnavy">SoA + All Invoices</b> = the statement above followed by a signed tax invoice for
+        every line, in one PDF the buyer can verify without asking for each invoice.
+      </p>
     </div>
   );
 }
