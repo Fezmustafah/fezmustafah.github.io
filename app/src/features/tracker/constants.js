@@ -2,36 +2,40 @@
 // Daily Invoice Tracker. Self-contained: nothing here is shared with the
 // letterhead document generator.
 
+// NO real company data lives in source. These are generic, blank placeholders
+// so a guest (or any not-signed-in / fresh visitor) sees EMPTY fields — never
+// someone else's email, TRN, phone or bank. Each user's real seller/buyer info
+// lives only in their own saved settings (cloud when signed in, local else).
 export const DEFAULT_BANK = {
   bankName: "",
-  accountName: "Bait Al Madina Traditional Kitchen",
+  accountName: "",
   accountNo: "",
   iban: "",
   swift: "",
 };
 
 export const DEFAULT_SELLER = {
-  name: "Bait Al Madina Traditional Kitchen",
-  nameAr: "مطبخ بيت المدينة الشعبي",
-  address: "Jebel Ali - 1, Dubai, U.A.E",
-  phone: "+971 55 692 5963 / +971 54 448 6615",
-  email: "adnankhanbhutta786@gmail.com",
-  trn: "104213822000003",
+  name: "",
+  nameAr: "",
+  address: "",
+  phone: "",
+  email: "",
+  trn: "",
   // beneficiary bank details printed on every invoice + the statement
   bank: { ...DEFAULT_BANK },
 };
 
 export const DEFAULT_BUYER = {
-  name: "D S C A Building Contracting L.L.C",
-  // Registered billing address from the tax notice — fixed, shown on every invoice.
-  address: "Prime Commercial Holdings A 304,\nAl Barsha South Fourth, Dubai, U.A.E",
-  phone: "+971 58 999 7842",
-  trn: "104168815900003",
+  name: "",
+  // Registered billing address (tax notice) — shown on every invoice.
+  address: "",
+  phone: "",
+  trn: "",
 };
 
 export const DEFAULT_ITEM = {
-  description: "Chicken Biryani (Parcel)",
-  unitPrice: 10,
+  description: "",
+  unitPrice: 0,
 };
 
 export const DEFAULT_VAT_RATE = 5;
@@ -63,7 +67,7 @@ export const DEFAULT_SETTINGS = {
 // ---- invoice LAYOUTS (structure, orthogonal to the colour skin) ----------
 // Each entry drives the invoice block arrangement (see invoiceLayouts.js).
 export const LAYOUTS = [
-  { key: "standard", name: "Default", desc: "The original Bait Al Madina format — seller & buyer boxed side-by-side." },
+  { key: "standard", name: "Default", desc: "Seller & buyer boxed side-by-side — the default format." },
   { key: "sidebar", name: "Sidebar", desc: "Coloured left rail (seller + pay-to bank); buyer & table on the right." },
   { key: "centered", name: "Centered", desc: "Seller in the header, buyer highlighted left, invoice details listed right." },
   { key: "compact", name: "Compact", desc: "Letter style: seller top-left, details top-right, single bill-to band." },
@@ -160,7 +164,7 @@ function adaptivePalette(brandHex) {
 export const THEMES = {
   classic: {
     key: "classic", name: "Classic", minimal: false, adaptive: false,
-    desc: "Navy & gold, filled bars. The Bait Al Madina default.",
+    desc: "Navy & gold, filled bars. The default style.",
     c: palette({ primary: "#1B2A5B", accent: "#C8A951", panel: "#FAF8F3", panelEdge: "#E0DDD5" }),
     font: { display: "helvetica", body: "helvetica" },
     layout: { header: "bar", title: "center" },

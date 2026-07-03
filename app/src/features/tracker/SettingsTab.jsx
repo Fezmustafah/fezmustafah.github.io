@@ -57,18 +57,19 @@ function LayoutThumb({ kind }) {
   );
 }
 
-function Field({ label, value, onChange, type = "text", multiline = false }) {
+function Field({ label, value, onChange, type = "text", multiline = false, placeholder = "" }) {
   const cls =
     "w-full rounded-lg border border-tcreamDark bg-white px-3 py-2 text-sm outline-none focus:border-tgold focus:ring-2 focus:ring-tgold/30";
   return (
     <label className="block">
       <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-tnavy/70">{label}</span>
       {multiline ? (
-        <textarea rows={2} value={value} onChange={(e) => onChange(e.target.value)} className={cls + " resize-none"} />
+        <textarea rows={2} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className={cls + " resize-none"} />
       ) : (
         <input
           type={type}
           value={value}
+          placeholder={placeholder}
           onChange={(e) => onChange(type === "number" ? Number(e.target.value) : e.target.value)}
           className={cls}
         />
@@ -266,12 +267,12 @@ export default function SettingsTab({ settings, onSave, letterheads = [] }) {
             <button type="button" onClick={removeSeller} disabled={sellers.length <= 1} title="Remove this company"
               className="rounded-lg px-2.5 py-2 text-lg font-bold text-[#C0392B] disabled:opacity-30 hover:bg-red-50">×</button>
           </div>
-          <Field label="Name" value={activeSeller.name || ""} onChange={setSellerField("name")} />
-          <Field label="Name (Arabic)" value={activeSeller.nameAr || ""} onChange={setSellerField("nameAr")} />
-          <Field label="Address" value={activeSeller.address || ""} onChange={setSellerField("address")} />
-          <Field label="Phone" value={activeSeller.phone || ""} onChange={setSellerField("phone")} />
-          <Field label="Email" value={activeSeller.email || ""} onChange={setSellerField("email")} />
-          <Field label="TRN" value={activeSeller.trn || ""} onChange={setSellerField("trn")} />
+          <Field label="Name" value={activeSeller.name || ""} onChange={setSellerField("name")} placeholder="Your company name" />
+          <Field label="Name (Arabic)" value={activeSeller.nameAr || ""} onChange={setSellerField("nameAr")} placeholder="اسم شركتك (اختياري)" />
+          <Field label="Address" value={activeSeller.address || ""} onChange={setSellerField("address")} placeholder="Street, area, city, country" />
+          <Field label="Phone" value={activeSeller.phone || ""} onChange={setSellerField("phone")} placeholder="+971 5X XXX XXXX" />
+          <Field label="Email" value={activeSeller.email || ""} onChange={setSellerField("email")} placeholder="you@company.com" />
+          <Field label="TRN" value={activeSeller.trn || ""} onChange={setSellerField("trn")} placeholder="15-digit tax number" />
           <ExtraFields fields={activeSeller.extra || []} onChange={setSellerExtra} />
           <p className="text-[11px] text-slate">Each company keeps its own bank details below. Switching here changes which one prints.</p>
         </Card>
@@ -294,10 +295,10 @@ export default function SettingsTab({ settings, onSave, letterheads = [] }) {
             <button type="button" onClick={removeBuyer} disabled={buyers.length <= 1} title="Remove this company"
               className="rounded-lg px-2.5 py-2 text-lg font-bold text-[#C0392B] disabled:opacity-30 hover:bg-red-50">×</button>
           </div>
-          <Field label="Name" value={activeBuyer.name || ""} onChange={setBuyerField("name")} />
-          <Field label="Registered address (tax notice)" value={activeBuyer.address || ""} onChange={setBuyerField("address")} multiline />
-          <Field label="Phone" value={activeBuyer.phone || ""} onChange={setBuyerField("phone")} />
-          <Field label="TRN" value={activeBuyer.trn || ""} onChange={setBuyerField("trn")} />
+          <Field label="Name" value={activeBuyer.name || ""} onChange={setBuyerField("name")} placeholder="Customer company name" />
+          <Field label="Registered address (tax notice)" value={activeBuyer.address || ""} onChange={setBuyerField("address")} multiline placeholder="Registered billing address" />
+          <Field label="Phone" value={activeBuyer.phone || ""} onChange={setBuyerField("phone")} placeholder="+971 5X XXX XXXX" />
+          <Field label="TRN" value={activeBuyer.trn || ""} onChange={setBuyerField("trn")} placeholder="15-digit tax number" />
           <ExtraFields fields={activeBuyer.extra || []} onChange={setBuyerExtra} />
           <p className="text-[11px] text-slate">The selected company is used on all invoices &amp; the weekly statement.</p>
         </Card>
@@ -460,7 +461,7 @@ export default function SettingsTab({ settings, onSave, letterheads = [] }) {
             }
           >
             <span className="block font-semibold text-tnavy">Drawn header</span>
-            <span className="text-xs text-slate">Built-in navy/gold Bait Al Madina header &amp; footer.</span>
+            <span className="text-xs text-slate">Built-in navy/gold header &amp; footer.</span>
           </button>
           <button
             type="button"
