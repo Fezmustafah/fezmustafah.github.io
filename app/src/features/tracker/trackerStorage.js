@@ -1,11 +1,16 @@
 // trackerStorage.js — persistence for the Daily Invoice Tracker.
 //
-// Model: when signed in (and cloud configured) Supabase is the source of truth
+// Model: when signed in (and cloud configured) Supabase is the SOURCE OF TRUTH
 // (table `tracker_data`, per-user RLS) so data follows the account across
-// devices. Local idb-keyval is a cache / offline buffer. Loading MERGES local
-// buffered writes into the cloud copy (union by date + order id) so nothing is
-// ever lost or clobbered — this is what fixes the "upload wiped my entries"
-// bug. When signed out it's purely local.
+// devices. Local idb-keyval is a cache + an offline buffer.
+//
+// Load is cloud-authoritative: the cloud value replaces the local cache. This
+// is deliberate — an empty/absent cloud key means a real deletion, and must NOT
+// be resurrected by a stale local cache on another device (the old union-merge
+// did exactly that: deletes never stuck). Genuine offline edits are not lost —
+// a cloud write/delete that fails while online is recorded in a local PENDING
+// map and replayed on the next load. A key with NO pending op always yields to
+// the cloud. When signed out it's purely local.
 import { get, set, del } from "idb-keyval";
 import { getUserId } from "../../lib/authState.js";
 import { cloudEnabled, supabase } from "../../lib/supabase.js";
@@ -14,6 +19,7 @@ import { DEFAULT_SETTINGS, DEFAULT_VAT_RATE, isTemplate, isLayout } from "./cons
 const ORDERS_KEY = "tracker-orders"; // { [isoDate]: Order[] }
 const SETTINGS_KEY = "tracker-settings"; // { seller, buyer, items, vatRate, header }
 const META_KEY = "tracker-meta"; // { trackingStart: isoDate }
+const PENDING_KEY = "tracker-pending"; // { [key]: "write" | "delete" } — local-only
 
 const useCloud = () => cloudEnabled && !!getUserId();
 
@@ -45,18 +51,19 @@ async function cloudDel(key) {
   if (error) throw error;
 }
 
-// union two orders maps without dropping anything (cloud + local-buffered)
-function mergeOrders(a = {}, b = {}) {
-  const out = {};
-  for (const date of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) {
-    const seen = new Set();
-    const list = [];
-    for (const o of [...(a?.[date] || []), ...(b?.[date] || [])]) {
-      if (o && !seen.has(o.id)) { seen.add(o.id); list.push(o); }
-    }
-    if (list.length) out[date] = list;
-  }
-  return out;
+// ---- pending-op tracking: local intent not yet confirmed on the cloud -------
+// "write" = a cloud upsert failed while online (offline edit to replay).
+// "delete" = a cloud delete failed (deletion to replay). Load replays these;
+// a key with NO entry yields to the cloud so deletions are never resurrected.
+async function getPending() { return (await get(PENDING_KEY)) || {}; }
+async function markPending(key, op) {
+  const p = await getPending();
+  p[key] = op;
+  await set(PENDING_KEY, p);
+}
+async function clearPending(key) {
+  const p = await getPending();
+  if (key in p) { delete p[key]; await set(PENDING_KEY, p); }
 }
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -109,60 +116,70 @@ function normalizeSettings(saved) {
   };
 }
 
-// ---- load (cloud-authoritative with safe merge) ---------------------------
-export async function loadTracker() {
-  const localOrders = (await get(ORDERS_KEY)) || {};
-  const localSettings = (await get(SETTINGS_KEY)) || null;
-  const localMeta = (await get(META_KEY)) || null;
+// ---- load (cloud-authoritative; pending ops replayed) ---------------------
+// Resolve one key against the cloud, honouring any pending local intent.
+// seedFromLocal: when the cloud has NOTHING for this key, adopt (and upload) the
+// local copy. On for settings/meta (config, never deliberately cleared); OFF
+// for orders — an empty orders key is a real "clear week", so it must not be
+// re-seeded from a stale local cache (that was the resurrection bug).
+async function resolveKey(key, seedFromLocal) {
+  const local = await get(key);
+  if (!useCloud()) return local ?? undefined;
 
-  if (useCloud()) {
-    try {
-      const [co, cs, cm] = await Promise.all([cloudGet(ORDERS_KEY), cloudGet(SETTINGS_KEY), cloudGet(META_KEY)]);
+  const pending = (await getPending())[key];
 
-      // orders: merge cloud with any offline-buffered local writes (no loss)
-      const orders = mergeOrders(co || {}, localOrders);
-      if (JSON.stringify(orders) !== JSON.stringify(co || {})) {
-        try { await cloudSet(ORDERS_KEY, orders); } catch { /* keep going */ }
-      }
-
-      // settings / meta: cloud wins when present; otherwise seed from local
-      let settings = cs;
-      if (settings == null && localSettings) { settings = localSettings; try { await cloudSet(SETTINGS_KEY, settings); } catch {} }
-      let meta = cm;
-      if (meta == null && localMeta) { meta = localMeta; try { await cloudSet(META_KEY, meta); } catch {} }
-
-      // refresh the local cache to match
-      await set(ORDERS_KEY, orders);
-      if (settings) await set(SETTINGS_KEY, settings);
-      if (meta) await set(META_KEY, meta);
-
-      return { orders, settings: normalizeSettings(settings), meta: meta || {} };
-    } catch (e) {
-      console.warn("[tracker] cloud load failed, using local:", e.message);
-    }
+  // this device deleted while the cloud call failed — finish the delete.
+  if (pending === "delete") {
+    try { await cloudDel(key); await clearPending(key); }
+    catch (e) { console.warn("[tracker] pending delete retry failed:", e.message); }
+    await del(key);
+    return undefined;
   }
-  return { orders: localOrders, settings: normalizeSettings(localSettings), meta: localMeta || {} };
+
+  let cloud;
+  try { cloud = await cloudGet(key); }
+  catch (e) { console.warn("[tracker] cloud read failed, using local:", e.message); return local ?? undefined; }
+
+  // offline edit not yet synced — local wins, push it up.
+  if (pending === "write") {
+    try { await cloudSet(key, local); await clearPending(key); }
+    catch (e) { console.warn("[tracker] pending write retry failed:", e.message); }
+    return local ?? undefined;
+  }
+
+  // no local intent → the cloud is the source of truth.
+  if (cloud == null) {
+    if (seedFromLocal && local != null) {
+      try { await cloudSet(key, local); } catch {}
+      return local;
+    }
+    await del(key); // cloud is empty and we trust it — clear the stale cache
+    return undefined;
+  }
+  await set(key, cloud); // refresh local cache to match the cloud
+  return cloud;
 }
 
-// ---- writes (cloud + local mirror; local buffer on cloud failure) ---------
+export async function loadTracker() {
+  const orders = (await resolveKey(ORDERS_KEY, false)) || {};
+  const settings = await resolveKey(SETTINGS_KEY, true);
+  const meta = (await resolveKey(META_KEY, true)) || {};
+  return { orders, settings: normalizeSettings(settings), meta };
+}
+
+// ---- writes (optimistic local mirror; pending buffer on cloud failure) ----
 async function writeKey(key, value) {
-  if (useCloud()) {
-    try {
-      await cloudSet(key, value);
-      await set(key, value); // keep local cache in step with the cloud
-      return;
-    } catch (e) {
-      console.warn("[tracker] cloud write failed, buffered locally:", e.message);
-    }
-  }
-  await set(key, value);
+  await set(key, value); // optimistic local cache
+  if (!useCloud()) return;
+  try { await cloudSet(key, value); await clearPending(key); }
+  catch (e) { await markPending(key, "write"); console.warn("[tracker] cloud write failed, buffered locally:", e.message); }
 }
 
 async function deleteKey(key) {
-  if (useCloud()) {
-    try { await cloudDel(key); await del(key); return; } catch (e) { console.warn("[tracker] cloud delete failed:", e.message); }
-  }
-  await del(key);
+  await del(key); // clear local first
+  if (!useCloud()) return;
+  try { await cloudDel(key); await clearPending(key); }
+  catch (e) { await markPending(key, "delete"); console.warn("[tracker] cloud delete failed, will retry on next load:", e.message); }
 }
 
 export const setOrders = (orders) => writeKey(ORDERS_KEY, orders);
