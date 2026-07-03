@@ -202,7 +202,7 @@ export default function TrackerPage({ onExit, storeKey }) {
           </button>
           <div className="leading-none">
             <h1 className="text-[15px] font-extrabold tracking-tight text-tnavy">Daily Invoice Tracker</h1>
-            <p className="mt-1 text-[11px] text-slate">Bait Al Madina · daily deliveries, weekly statement</p>
+            <p className="mt-1 text-[11px] text-slate">{settings.seller?.name ? `${settings.seller.name} · ` : ""}daily deliveries, weekly statement</p>
           </div>
         </div>
         <div className="hidden h-2 w-2 rounded-full bg-tgold sm:block" />
