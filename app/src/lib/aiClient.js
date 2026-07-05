@@ -28,6 +28,42 @@ export async function generateDocument({ brief, docType, company, fields }) {
   return data; // { title, blocks: [...] }
 }
 
+// Whether the cloud AI endpoint is configured (prod has VITE_SUPABASE_URL; the
+// dev clone has no .env, so passport scanning is a prod-only feature).
+export const aiConfigured = () => !!SUPABASE_URL;
+
+// Downscale an image file to a JPEG data URL (max edge ~1600px) so the passport
+// upload stays small and reliable. Returns { dataUrl, mimeType }.
+async function downscaleImage(file, maxEdge = 1600, quality = 0.85) {
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) {
+    // fallback: send the raw file as a data URL
+    const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(file); });
+    return { dataUrl, mimeType: file.type || "image/jpeg" };
+  }
+  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale), h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, w, h);
+  return { dataUrl: canvas.toDataURL("image/jpeg", quality), mimeType: "image/jpeg" };
+}
+
+// Read a passport image via the Gemini vision endpoint. The image is sent to the
+// edge function (which forwards it to Google). Returns the extracted fields.
+export async function scanPassport(file) {
+  if (!SUPABASE_URL) throw new Error("Passport scanning needs the live app (cloud AI). It works on the deployed site, not this local build.");
+  const { dataUrl, mimeType } = await downscaleImage(file);
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ mode: "passport", image: dataUrl, mimeType }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Passport scan failed.");
+  return data.passport || {};
+}
+
 const MM_PER_PT = 1 / 2.834645669;
 
 // rough line-count estimate for vertical spacing

@@ -13,6 +13,7 @@ import MobileShell from "./editor/MobileShell.jsx";
 import Tutorial, { seenOnboarding } from "./editor/Tutorial.jsx";
 import SignPdf from "./sign/SignPdf.jsx";
 import TrackerPage from "./features/tracker/TrackerPage.jsx";
+import OfferLetterPage from "./features/offerletter/OfferLetterPage.jsx";
 import { useViewport } from "./editor/useViewport.js";
 import AuthBar from "./auth/AuthBar.jsx";
 import { useAuth } from "./auth/AuthProvider.jsx";
@@ -79,7 +80,7 @@ export default function App() {
   const [stampOpen, setStampOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showTutorial, setShowTutorial] = useState(() => !seenOnboarding());
-  const [mode, setMode] = useState("studio"); // "studio" | "sign" | "tracker"
+  const [mode, setMode] = useState("studio"); // "studio" | "sign" | "tracker" | "offer"
   const auth = useAuth();
   const storeKey = (auth?.user?.id || "local") + ":" + refreshKey;
   const lh = editor.letterhead;
@@ -152,6 +153,10 @@ export default function App() {
     return <TrackerPage onExit={() => setMode("studio")} storeKey={storeKey} />;
   }
 
+  if (mode === "offer") {
+    return <OfferLetterPage onExit={() => setMode("studio")} storeKey={storeKey} />;
+  }
+
   if (vp.isMobile) {
     return (
       <>
@@ -163,6 +168,7 @@ export default function App() {
           onSignup={() => setShowTutorial(true)} onHelp={() => setShowTutorial(true)}
           onSignMode={() => setMode("sign")}
           onTrackerMode={() => setMode("tracker")}
+          onOfferMode={() => setMode("offer")}
           storeKey={storeKey}
           onPreview={preview} onDownload={download} onClear={clearLayout}
           onAddText={addText} onAddTable={addTable} onAddLine={addLine}
@@ -187,6 +193,10 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setMode("offer")} title="Employment Offer Letter"
+            className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
+            📝 Offer Letter
+          </button>
           <button onClick={() => setMode("tracker")} title="Daily Invoice Tracker"
             className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
             📋 Daily Tracker

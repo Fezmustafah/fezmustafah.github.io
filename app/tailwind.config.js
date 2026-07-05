@@ -16,6 +16,8 @@ export default {
         tgold: "#C8A951",
         tcream: "#FAF8F3",
         tcreamDark: "#E0DDD5",
+        // Employment Offer Letter accent
+        magenta: "#CC0066",
       },
       fontFamily: {
         // premium type system shared with the marketing site

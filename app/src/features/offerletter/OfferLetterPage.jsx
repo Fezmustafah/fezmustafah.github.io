@@ -1,0 +1,379 @@
+// OfferLetterPage.jsx — form-driven EMPLOYMENT OFFER LETTER generator. Fills a
+// fixed, deterministic template (offerPdf.js) — NO AI, so the output is 99%
+// identical to the reference every time. Draft is persisted device-locally via
+// idb-keyval (passport / candidate data is never sent to the cloud).
+import { useEffect, useMemo, useRef, useState } from "react";
+import { get, set } from "idb-keyval";
+import { buildOffer } from "./offerPdf.js";
+import {
+  DEFAULT_OFFER, normalizeOffer, salaryTotal, money,
+} from "./offerModel.js";
+import { listLetterheads, listSignatures } from "../../lib/storage.js";
+import { scanPassport, aiConfigured } from "../../lib/aiClient.js";
+
+const DRAFT_KEY = "offer-letter:draft";
+
+// ---- tiny form primitives -------------------------------------------------
+function Field({ label, children, hint }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate/70">{label}</span>
+      {children}
+      {hint && <span className="mt-1 block text-[10.5px] leading-snug text-slate/60">{hint}</span>}
+    </label>
+  );
+}
+const inputCls =
+  "w-full rounded-xl bg-[#f6f7f9] px-3 py-2.5 text-sm text-navy outline-none ring-1 ring-black/[0.05] transition focus:bg-white focus:ring-2 focus:ring-brass/50";
+
+function Text({ value, onChange, placeholder, ...r }) {
+  return <input value={value ?? ""} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={inputCls} {...r} />;
+}
+function Area({ value, onChange, placeholder, rows = 3 }) {
+  return <textarea value={value ?? ""} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={rows} className={inputCls + " resize-y leading-relaxed"} />;
+}
+function Card({ title, step, children }) {
+  return (
+    <section className="rounded-2xl bg-white p-4 ring-1 ring-black/[0.06]">
+      <h3 className="mb-3 flex items-center gap-2 text-[13px] font-extrabold text-navy">
+        {step != null && <span className="grid h-5 w-5 place-items-center rounded-full bg-magenta/10 text-[11px] font-bold text-magenta">{step}</span>}
+        {title}
+      </h3>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
+export default function OfferLetterPage({ onExit, storeKey }) {
+  const [o, setO] = useState(DEFAULT_OFFER);
+  const [letterheads, setLetterheads] = useState([]);
+  const [signatures, setSignatures] = useState([]);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const debounce = useRef(null);
+
+  const set1 = (patch) => setO((p) => ({ ...p, ...patch }));
+
+  // load persisted draft + available letterheads / signatures
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const draft = await get(DRAFT_KEY).catch(() => null);
+      if (live && draft) setO(normalizeOffer(draft));
+      setLoaded(true);
+    })();
+    listLetterheads().then((l) => live && setLetterheads(l || [])).catch(() => {});
+    listSignatures().then((s) => live && setSignatures(s || [])).catch(() => {});
+    return () => { live = false; };
+  }, [storeKey]);
+
+  const letterhead = useMemo(
+    () => letterheads.find((l) => l.id === o.letterheadId) || null,
+    [letterheads, o.letterheadId]
+  );
+  const ctx = useMemo(() => ({
+    letterhead,
+    signature: signatures.find((s) => s.id === o.signatureId) || null,
+    stamp: signatures.find((s) => s.id === o.stampId) || null,
+  }), [letterhead, signatures, o.signatureId, o.stampId]);
+
+  // when a letterhead is picked and "use letterhead colours" is on, adopt its
+  // detected brand accent so the document matches the letterhead automatically.
+  useEffect(() => {
+    if (o.useLetterhead && o.useLetterheadColors && letterhead?.accent && letterhead.accent !== o.accent) {
+      set1({ accent: letterhead.accent });
+    }
+  }, [o.useLetterhead, o.useLetterheadColors, letterhead]);
+
+  // persist draft + regenerate the live preview (debounced)
+  useEffect(() => {
+    if (!loaded) return;
+    if (debounce.current) clearTimeout(debounce.current);
+    debounce.current = setTimeout(() => {
+      set(DRAFT_KEY, o).catch(() => {});
+      try {
+        const url = buildOffer(o, ctx).output("bloburl");
+        setPreviewUrl(String(url));
+      } catch (e) { /* keep last good preview */ }
+    }, 300);
+    return () => clearTimeout(debounce.current);
+  }, [o, ctx, loaded]);
+
+  function download() {
+    const doc = buildOffer(o, ctx);
+    const nm = `Offer_Letter_${(o.candidateName || "Candidate").replace(/\s+/g, "_")}.pdf`;
+    doc.save(nm);
+  }
+
+  function setLeave(i, patch) {
+    setO((p) => ({ ...p, leave: p.leave.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
+  }
+  const addLeave = () => setO((p) => ({ ...p, leave: [...p.leave, { item: "Maternity Leave", detail: "As per Federal Decree-Law No. 33 of 2021" }] }));
+  const rmLeave = (i) => setO((p) => ({ ...p, leave: p.leave.filter((_, j) => j !== i) }));
+
+  function setClause(i, patch) {
+    setO((p) => ({ ...p, customSections: p.customSections.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
+  }
+  const addClause = () => setO((p) => ({ ...p, customSections: [...(p.customSections || []), { title: "", body: "" }] }));
+  const rmClause = (i) => setO((p) => ({ ...p, customSections: p.customSections.filter((_, j) => j !== i) }));
+
+  function setSalary(i, patch) {
+    setO((p) => ({ ...p, salary: p.salary.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
+  }
+  const addSalary = () => setO((p) => ({ ...p, salary: [...p.salary, { label: "Allowance", amount: 0 }] }));
+  const rmSalary = (i) => setO((p) => ({ ...p, salary: p.salary.filter((_, j) => j !== i) }));
+
+  async function pickLogo(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => set1({ logoDataUrl: String(r.result) });
+    r.readAsDataURL(f);
+  }
+
+  const [scanning, setScanning] = useState(false);
+  const [scanMsg, setScanMsg] = useState("");
+  async function onScanPassport(e) {
+    const f = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!f) return;
+    setScanning(true); setScanMsg("");
+    try {
+      const p = await scanPassport(f);
+      const patch = {};
+      if (p.salutation) patch.salutation = p.salutation;
+      if (p.candidateName) patch.candidateName = p.candidateName;
+      if (p.nationality) patch.nationality = p.nationality;
+      if (p.passportNo) patch.passportNo = p.passportNo;
+      set1(patch);
+      const got = ["candidateName", "nationality", "passportNo"].filter((k) => patch[k]).length;
+      setScanMsg(got ? `Filled ${got} field${got === 1 ? "" : "s"} from the passport — please double-check.` : "Couldn’t read the fields clearly. Try a sharper, flat photo.");
+    } catch (err) {
+      setScanMsg(err.message || "Passport scan failed.");
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  return (
+    <div className="flex h-screen flex-col bg-[#e9ebef] text-navy">
+      <header className="z-20 flex h-14 shrink-0 items-center justify-between border-b border-black/[0.06] bg-white/90 px-4 backdrop-blur">
+        <div className="flex items-center gap-3">
+          <button onClick={onExit} className="rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">← Studio</button>
+          <div className="leading-none">
+            <h1 className="font-display text-[15px] font-extrabold tracking-tightest text-navy">Employment Offer Letter</h1>
+            <p className="mt-1 text-[11px] text-slate/80">Fixed legal template · fills exactly the same every time</p>
+          </div>
+        </div>
+        <button onClick={download} className="btn-primary px-4 py-2.5">Download PDF</button>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        {/* ---- form ---- */}
+        <aside className="w-[440px] shrink-0 space-y-4 overflow-auto border-r border-black/[0.06] bg-[#eef0f3] p-4">
+          <Card title="Branding" step={1}>
+            <Field label="Company name">
+              <Text value={o.company} onChange={(v) => set1({ company: v })} placeholder="LA MODA BEAUTY SALOON L.L.C S.O.C" />
+            </Field>
+            <Field label="City / country">
+              <Text value={o.companyCity} onChange={(v) => set1({ companyCity: v })} placeholder="Dubai, U.A.E." />
+            </Field>
+
+            <div className="rounded-xl bg-[#f6f7f9] p-3 ring-1 ring-black/[0.05]">
+              <label className="flex items-center gap-2 text-sm font-semibold text-navy">
+                <input type="checkbox" checked={o.useLetterhead} onChange={(e) => set1({ useLetterhead: e.target.checked })} className="accent-magenta" />
+                Print on my letterhead image
+              </label>
+              <p className="mt-1 text-[10.5px] leading-snug text-slate/70">Best match — uses a saved letterhead (logo, Arabic wordmark, footer) as the full-page background.</p>
+              {o.useLetterhead && (
+                <select value={o.letterheadId} onChange={(e) => set1({ letterheadId: e.target.value })} className={inputCls + " mt-2"}>
+                  <option value="">— pick a saved letterhead —</option>
+                  {letterheads.map((l) => <option key={l.id} value={l.id}>{l.name || "Letterhead"}</option>)}
+                </select>
+              )}
+              {o.useLetterhead && !letterheads.length && (
+                <p className="mt-2 text-[10.5px] text-magenta">No saved letterheads. Upload one in the Studio first, or untick to use a drawn header.</p>
+              )}
+              {o.useLetterhead && (
+                <label className="mt-2 flex items-center gap-2 text-xs font-semibold text-navy">
+                  <input type="checkbox" checked={o.useLetterheadColors} onChange={(e) => set1({ useLetterheadColors: e.target.checked })} className="accent-magenta" />
+                  Match accent to the letterhead’s colours
+                </label>
+              )}
+            </div>
+
+            {!o.useLetterhead && (
+              <>
+                <Field label="Logo (optional)" hint="Shown at the left of the drawn header.">
+                  <div className="flex items-center gap-2">
+                    <input type="file" accept="image/*" onChange={pickLogo} className="text-xs" />
+                    {o.logoDataUrl && <button onClick={() => set1({ logoDataUrl: "" })} className="text-xs font-semibold text-magenta">remove</button>}
+                  </div>
+                </Field>
+                <Field label="Footer line 1"><Text value={o.footerLine1} onChange={(v) => set1({ footerLine1: v })} placeholder="Mob.: 054 444 1530, Dubai, UAE, Email : ..." /></Field>
+                <Field label="Footer line 2"><Text value={o.footerLine2} onChange={(v) => set1({ footerLine2: v })} placeholder="Dubai-U.A.E" /></Field>
+              </>
+            )}
+            <Field label="Accent colour">
+              <div className="flex items-center gap-2">
+                <input type="color" value={o.accent} onChange={(e) => set1({ accent: e.target.value })} className="h-8 w-10 cursor-pointer rounded-lg border border-hairline" />
+                <span className="text-xs tabular-nums text-slate">{o.accent}</span>
+              </div>
+            </Field>
+          </Card>
+
+          <Card title="Document details" step={2}>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Date"><Text type="date" value={o.date} onChange={(v) => set1({ date: v })} /></Field>
+              <Field label="Reference no."><Text value={o.refNo} onChange={(v) => set1({ refNo: v })} placeholder="LMB/HR/OL/001/2026" /></Field>
+            </div>
+          </Card>
+
+          <Card title="Candidate" step={3}>
+            <div className="rounded-xl bg-magenta/[0.05] p-3 ring-1 ring-magenta/20">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-navy">Fill from passport</span>
+                <label className={"cursor-pointer rounded-full px-3 py-1.5 text-xs font-bold text-white transition " + (scanning ? "bg-magenta/60" : "bg-magenta hover:bg-magenta/90")}>
+                  {scanning ? "Scanning…" : "📷 Scan passport"}
+                  <input type="file" accept="image/*" capture="environment" disabled={scanning} onChange={onScanPassport} className="hidden" />
+                </label>
+              </div>
+              <p className="mt-1.5 text-[10.5px] leading-snug text-slate/70">
+                Option 1: type manually below. Option 2: upload the passport and AI reads the name, nationality & passport no.
+                {" "}<span className="text-magenta/90">The image is sent to Google’s AI to read it.</span>
+              </p>
+              {!aiConfigured() && <p className="mt-1 text-[10.5px] text-magenta">Scanning runs on the live site only (needs cloud AI) — not this local build.</p>}
+              {scanMsg && <p className="mt-1.5 text-[10.5px] font-medium text-navy">{scanMsg}</p>}
+            </div>
+            <div className="grid grid-cols-[80px_1fr] gap-3">
+              <Field label="Title">
+                <select value={o.salutation} onChange={(e) => set1({ salutation: e.target.value })} className={inputCls}>
+                  {["Mr.", "Ms.", "Mrs.", "Dr."].map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </Field>
+              <Field label="Full name"><Text value={o.candidateName} onChange={(v) => set1({ candidateName: v })} placeholder="Alaa Naddaf" /></Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Nationality"><Text value={o.nationality} onChange={(v) => set1({ nationality: v })} placeholder="Armenian" /></Field>
+              <Field label="Passport no."><Text value={o.passportNo} onChange={(v) => set1({ passportNo: v })} placeholder="AV0389163" /></Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Position"><Text value={o.position} onChange={(v) => set1({ position: v })} placeholder="Ladies Hairdresser" /></Field>
+              <Field label="Reports to"><Text value={o.reportingTo} onChange={(v) => set1({ reportingTo: v })} placeholder="Salon Manager" /></Field>
+            </div>
+          </Card>
+
+          <Card title="1 · Duties" step={4}>
+            <Field label="Responsibilities" hint="A running sentence; appears after 'Your responsibilities shall include …'.">
+              <Area value={o.duties} onChange={(v) => set1({ duties: v })} rows={4} />
+            </Field>
+          </Card>
+
+          <Card title="2 · Remuneration" step={5}>
+            {o.salary.map((r, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input value={r.label} onChange={(e) => setSalary(i, { label: e.target.value })} className={inputCls} placeholder="Component" />
+                <input type="number" value={r.amount} onChange={(e) => setSalary(i, { amount: Number(e.target.value) })} className={inputCls + " w-28 text-right"} />
+                <button onClick={() => rmSalary(i)} className="shrink-0 rounded-lg px-2 py-1 text-magenta hover:bg-magenta/10" title="remove">✕</button>
+              </div>
+            ))}
+            <div className="flex items-center justify-between">
+              <button onClick={addSalary} className="rounded-full bg-[#f6f7f9] px-3 py-1.5 text-xs font-semibold text-navy ring-1 ring-black/[0.05] hover:bg-[#eef0f3]">+ Add component</button>
+              <div className="text-sm font-bold text-navy">Total {o.currency} {money(salaryTotal(o.salary))}</div>
+            </div>
+            <Field label="Currency"><Text value={o.currency} onChange={(v) => set1({ currency: v })} placeholder="AED" /></Field>
+          </Card>
+
+          <Card title="3 · Probation & visa" step={6}>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Probation period"><Text value={o.probationMonths} onChange={(v) => set1({ probationMonths: v })} placeholder="two (2)" /></Field>
+              <Field label="Notice (days)"><Text value={o.noticeDays} onChange={(v) => set1({ noticeDays: v })} placeholder="fourteen (14)" /></Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Governing law"><Text value={o.lawRef} onChange={(v) => set1({ lawRef: v })} placeholder="Federal Decree-Law No. 33 of 2021" /></Field>
+              <Field label="Probation article"><Text value={o.probationArticle} onChange={(v) => set1({ probationArticle: v })} placeholder="Article 9" /></Field>
+            </div>
+          </Card>
+
+          <Card title="4 · Working hours & leave" step={7}>
+            <p className="-mt-1 text-[10.5px] leading-snug text-slate/60">Add any leave condition (e.g. Maternity Leave) — it renders as a new row, same design.</p>
+            {o.leave.map((r, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input value={r.item} onChange={(e) => setLeave(i, { item: e.target.value })} className={inputCls + " w-36 shrink-0"} placeholder="Item" />
+                <input value={r.detail} onChange={(e) => setLeave(i, { detail: e.target.value })} className={inputCls} placeholder="Detail" />
+                <button onClick={() => rmLeave(i)} className="shrink-0 rounded-lg px-2 py-1 text-magenta hover:bg-magenta/10" title="remove">✕</button>
+              </div>
+            ))}
+            <button onClick={addLeave} className="rounded-full bg-[#f6f7f9] px-3 py-1.5 text-xs font-semibold text-navy ring-1 ring-black/[0.05] hover:bg-[#eef0f3]">+ Add leave / condition</button>
+          </Card>
+
+          <Card title="5 · Benefits" step={8}>
+            <Field label="Entitlements" hint="Appears after 'The Company shall provide the following …'.">
+              <Area value={o.benefits} onChange={(v) => set1({ benefits: v })} rows={2} />
+            </Field>
+          </Card>
+
+          <Card title="6 · Validity" step={9}>
+            <Field label="Offer valid for"><Text value={o.validityDays} onChange={(v) => set1({ validityDays: v })} placeholder="fourteen (14)" /></Field>
+          </Card>
+
+          <Card title="Add clauses / blocks">
+            <p className="-mt-1 text-[10.5px] leading-snug text-slate/60">Append your own numbered sections (7, 8 …). Wrap **text** in double asterisks to make it bold — same as the built-in clauses.</p>
+            {(o.customSections || []).map((s, i) => (
+              <div key={i} className="rounded-xl bg-[#f6f7f9] p-2.5 ring-1 ring-black/[0.05]">
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-magenta/10 text-[11px] font-bold text-magenta">{7 + i}</span>
+                  <input value={s.title} onChange={(e) => setClause(i, { title: e.target.value })} className={inputCls} placeholder="CLAUSE TITLE (e.g. ACCOMMODATION)" />
+                  <button onClick={() => rmClause(i)} className="shrink-0 rounded-lg px-2 py-1 text-magenta hover:bg-magenta/10" title="remove">✕</button>
+                </div>
+                <Area value={s.body} onChange={(v) => setClause(i, { body: v })} rows={3} placeholder="Clause text…" />
+              </div>
+            ))}
+            <button onClick={addClause} className="rounded-full bg-[#f6f7f9] px-3 py-1.5 text-xs font-semibold text-navy ring-1 ring-black/[0.05] hover:bg-[#eef0f3]">+ Add clause</button>
+          </Card>
+
+          <Card title="Signature, stamp & fit">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Signature" hint="Saved in Sign-a-PDF.">
+                <select value={o.signatureId} onChange={(e) => set1({ signatureId: e.target.value })} className={inputCls}>
+                  <option value="">— none —</option>
+                  {signatures.map((s) => <option key={s.id} value={s.id}>{s.name || "Signature"}</option>)}
+                </select>
+              </Field>
+              <Field label="Company stamp">
+                <select value={o.stampId} onChange={(e) => set1({ stampId: e.target.value })} className={inputCls}>
+                  <option value="">— none —</option>
+                  {signatures.map((s) => <option key={s.id} value={s.id}>{s.name || "Stamp"}</option>)}
+                </select>
+              </Field>
+            </div>
+            {!signatures.length && <p className="text-[10.5px] text-slate/60">No saved signatures/stamps yet — add them in “✒ Sign a PDF”.</p>}
+            <Field label={`Fit — nudge content vertically (${o.contentOffset || 0} mm)`} hint="Use with a letterhead so the body sits below the header.">
+              <input type="range" min={-20} max={40} value={o.contentOffset || 0} onChange={(e) => set1({ contentOffset: Number(e.target.value) })} className="w-full accent-magenta" />
+            </Field>
+          </Card>
+
+          <button onClick={() => { if (confirm("Reset all fields to the template defaults? Your candidate entries will be cleared.")) setO(DEFAULT_OFFER); }}
+            className="w-full rounded-xl px-3 py-2 text-sm font-semibold text-slate ring-1 ring-black/[0.06] transition hover:bg-white">
+            Reset to defaults
+          </button>
+        </aside>
+
+        {/* ---- live preview ---- */}
+        <main className="flex min-w-0 flex-1 flex-col items-center overflow-auto p-6" style={{ background: "radial-gradient(1000px 600px at 50% -10%, rgba(204,0,102,0.06), transparent 55%), #e9ebef" }}>
+          <div className="w-full max-w-[720px]">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate/70">Live preview</span>
+              <span className="text-[11px] text-slate/60">A4 · print-ready</span>
+            </div>
+            {previewUrl ? (
+              <iframe title="offer preview" src={previewUrl} className="h-[980px] w-full rounded-xl bg-white shadow-lg ring-1 ring-black/10" />
+            ) : (
+              <div className="grid h-[980px] w-full place-items-center rounded-xl bg-white text-sm text-slate ring-1 ring-black/10">Rendering…</div>
+            )}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}

@@ -122,23 +122,9 @@ Order blocks top-to-bottom.`;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("", { status: 204, headers: CORS });
-  if (req.method !== "POST") return new Response(JSON.stringify({ error: "POST only" }), { status: 405, headers: CORS });
-
-  const key = Deno.env.get("GEMINI_API_KEY");
-  if (!key) return new Response(JSON.stringify({ error: "AI is not configured (GEMINI_API_KEY missing)." }), { status: 500, headers: CORS });
-
-  let body: { brief?: string; docType?: string; company?: string; fields?: Fields } = {};
-  try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: "Bad request body." }), { status: 400, headers: CORS }); }
-  const { brief = "", docType = "letter", company = "", fields = {} } = body;
-  if (!brief.trim()) return new Response(JSON.stringify({ error: "Describe what to write first." }), { status: 400, headers: CORS });
-
-  const payload = {
-    contents: [{ parts: [{ text: buildPrompt(brief, docType, company, fields) }] }],
-    generationConfig: { temperature: 0.4, responseMimeType: "application/json" },
-  };
-
+// Shared Gemini call: tries each model (with one retry on 429/503) and returns
+// the raw JSON text from the first that responds, else throws with the reason.
+async function askGemini(key: string, payload: unknown): Promise<string> {
   let lastErr = "No model responded.";
   for (const model of MODELS) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
@@ -146,16 +132,86 @@ Deno.serve(async (req) => {
       const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (res.ok) {
         const data = await res.json();
-        const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-        let parsed;
-        try { parsed = JSON.parse(raw); } catch { parsed = JSON.parse(raw.replace(/```json|```/g, "").trim()); }
-        if (!parsed || !Array.isArray(parsed.blocks)) return new Response(JSON.stringify({ error: "AI returned an unexpected shape." }), { status: 502, headers: CORS });
-        return new Response(JSON.stringify(parsed), { status: 200, headers: CORS });
+        return data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
       }
       lastErr = (await res.text()).slice(0, 300);
       if (res.status === 429 || res.status === 503) { await sleep(700); continue; }
       break;
     }
   }
-  return new Response(JSON.stringify({ error: "AI is busy right now — try again in a moment.", detail: lastErr }), { status: 502, headers: CORS });
+  throw new Error(lastErr);
+}
+
+const safeJson = (raw: string) => {
+  try { return JSON.parse(raw); } catch { return JSON.parse(raw.replace(/```json|```/g, "").trim()); }
+};
+
+// Passport reader: pulls candidate identity fields from a passport image so the
+// offer-letter form can autofill them. The image is passed to Gemini vision.
+const PASSPORT_PROMPT = `You are a precise passport data extractor. Inspect BOTH the visual zone and the
+machine-readable zone (the two < < < lines at the bottom) of this passport image.
+Return ONLY JSON in exactly this shape:
+{"salutation":"","candidateName":"","nationality":"","passportNo":"","dob":"","expiry":"","sex":""}
+Rules:
+- candidateName: full name in normal Title Case, given names then surname, e.g. "Alaa Naddaf". No << or codes.
+- sex: "M" or "F" exactly as printed.
+- salutation: "Mr." if sex is M, otherwise "Ms.".
+- nationality: the English demonym ADJECTIVE (e.g. "Nepali", "Armenian", "Indian", "Filipino"), NOT the 3-letter code.
+- passportNo: exactly as printed in the passport number field.
+- dob and expiry: formatted "DD MMM YYYY" (e.g. "03 Jul 1995").
+- If any field is genuinely unreadable, use an empty string. Never guess or fabricate.`;
+
+async function handlePassport(key: string, image: string, mimeType: string) {
+  const b64 = image.includes(",") ? image.split(",")[1] : image; // strip data URL prefix
+  const payload = {
+    contents: [{ parts: [{ inline_data: { mime_type: mimeType || "image/jpeg", data: b64 } }, { text: PASSPORT_PROMPT }] }],
+    generationConfig: { temperature: 0, responseMimeType: "application/json" },
+  };
+  const raw = await askGemini(key, payload);
+  const p = safeJson(raw) || {};
+  const clean = (s: unknown) => (typeof s === "string" ? s.trim() : "");
+  const passport = {
+    salutation: clean(p.salutation) || (clean(p.sex).toUpperCase() === "F" ? "Ms." : "Mr."),
+    candidateName: clean(p.candidateName),
+    nationality: clean(p.nationality),
+    passportNo: clean(p.passportNo),
+    dob: clean(p.dob),
+    expiry: clean(p.expiry),
+    sex: clean(p.sex),
+  };
+  return new Response(JSON.stringify({ passport }), { status: 200, headers: CORS });
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("", { status: 204, headers: CORS });
+  if (req.method !== "POST") return new Response(JSON.stringify({ error: "POST only" }), { status: 405, headers: CORS });
+
+  const key = Deno.env.get("GEMINI_API_KEY");
+  if (!key) return new Response(JSON.stringify({ error: "AI is not configured (GEMINI_API_KEY missing)." }), { status: 500, headers: CORS });
+
+  let body: { mode?: string; image?: string; mimeType?: string; brief?: string; docType?: string; company?: string; fields?: Fields } = {};
+  try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: "Bad request body." }), { status: 400, headers: CORS }); }
+
+  // ---- passport vision path ----
+  if (body.mode === "passport") {
+    if (!body.image) return new Response(JSON.stringify({ error: "No passport image provided." }), { status: 400, headers: CORS });
+    try { return await handlePassport(key, body.image, body.mimeType || "image/jpeg"); }
+    catch (e) { return new Response(JSON.stringify({ error: "Could not read the passport — try a clearer photo.", detail: String(e).slice(0, 300) }), { status: 502, headers: CORS }); }
+  }
+
+  // ---- text document path ----
+  const { brief = "", docType = "letter", company = "", fields = {} } = body;
+  if (!brief.trim()) return new Response(JSON.stringify({ error: "Describe what to write first." }), { status: 400, headers: CORS });
+
+  const payload = {
+    contents: [{ parts: [{ text: buildPrompt(brief, docType, company, fields) }] }],
+    generationConfig: { temperature: 0.4, responseMimeType: "application/json" },
+  };
+  try {
+    const parsed = safeJson(await askGemini(key, payload));
+    if (!parsed || !Array.isArray(parsed.blocks)) return new Response(JSON.stringify({ error: "AI returned an unexpected shape." }), { status: 502, headers: CORS });
+    return new Response(JSON.stringify(parsed), { status: 200, headers: CORS });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: "AI is busy right now — try again in a moment.", detail: String(e).slice(0, 300) }), { status: 502, headers: CORS });
+  }
 });
