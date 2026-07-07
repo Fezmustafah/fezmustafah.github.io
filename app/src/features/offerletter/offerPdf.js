@@ -18,7 +18,7 @@ const BODY_L = ML, BODY_R = PW - MR; // 13 .. 197
 const BODY_W = BODY_R - BODY_L;      // 184
 const TBL_L = 40, TBL_R = 170;       // centred table block
 const TBL_W = TBL_R - TBL_L;         // 130
-const SIG_H = 32;                    // signature block footprint (unscaled)
+const SIG_H = 38;                    // signature block footprint (unscaled, measured)
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -245,26 +245,31 @@ function layoutBody(doc, o, accent, S, top) {
 }
 
 // ---- main builder ---------------------------------------------------------
-export function buildOffer(o, ctx = {}) {
+// opts.drawAssets=false skips the signature/stamp images (used by the on-screen
+// placement editor, which shows draggable overlays instead).
+export function buildOffer(o, ctx = {}, opts = {}) {
+  const drawAssets = opts.drawAssets !== false;
   const accent = hexRgb(o.accent);
   const letterhead = o.useLetterhead ? ctx.letterhead : null;
   const onLetterhead = !!(letterhead && letterhead.dataUrl);
 
-  const top = (onLetterhead ? (letterhead.marginTop || 30) + 5 : 35) + (Number(o.contentOffset) || 0);
-  const footerReserve = onLetterhead ? Math.max(14, letterhead.marginBottom || 16) : 15;
+  // body sits BETWEEN the header/footer zones — explicit on a letterhead so it
+  // never runs over the printed logo/footer; fixed for the drawn header.
+  const top = (onLetterhead ? (Number(o.headerSpace) || 46) : 35) + (Number(o.contentOffset) || 0);
+  const footerReserve = onLetterhead ? Math.max(10, Number(o.footerSpace) || 22) : 15;
   const sigTop = PH - footerReserve - SIG_H;
   const target = sigTop - 3; // body must end above the signature block
 
   // ---- fit pass: shrink until the body ends above the signature zone ----
   let S = 1;
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 10; i++) {
     const scratch = new jsPDF({ unit: "mm", format: "a4" });
     const bottom = layoutBody(scratch, o, accent, S, top);
     if (bottom <= target) break;
     const factor = (target - top) / (bottom - top); // < 1 when overflowing
     if (factor >= 0.999) break;
-    S = clamp(S * Math.max(factor, 0.9), 0.6, 1); // step down gently, floor 0.6
-    if (S <= 0.6) break;
+    S = clamp(S * Math.max(factor, 0.92), 0.55, 1); // step down gently, floor 0.55
+    if (S <= 0.55) break;
   }
 
   // ---- final draw ----
@@ -272,7 +277,7 @@ export function buildOffer(o, ctx = {}) {
   if (onLetterhead) drawLetterheadBg(doc, letterhead);
   else drawHeader(doc, o, accent);
   layoutBody(doc, o, accent, S, top);
-  signatures(doc, o, sigTop, accent, ctx);
+  signatures(doc, o, sigTop, accent, ctx, drawAssets);
   if (!onLetterhead) drawFooter(doc, o, accent);
   return doc;
 }
@@ -340,12 +345,23 @@ function leaveTable(doc, rows, y, accent, S) {
   return ry;
 }
 
+// draw an asset centred on (cx, baseline y), scaled to a target box (auto mode)
 function drawStampImage(doc, asset, cx, y, maxW, maxH) {
   if (!asset || !asset.dataUrl) return;
   const aspect = asset.aspect || 0.5;
   let w = maxW, h = w * aspect;
   if (h > maxH) { h = maxH; w = h / aspect; }
   try { doc.addImage(asset.dataUrl, "PNG", cx - w / 2, y - h, w, h); } catch { /* skip */ }
+}
+
+// draw an asset at a free page-fraction placement {x,y,w} (top-left + width).
+function drawPlacedAsset(doc, asset, place) {
+  if (!asset || !asset.dataUrl || !place) return;
+  const w = clamp(place.w, 0.04, 1) * PW;
+  const h = w * (asset.aspect || 0.5);
+  const x = clamp(place.x, 0, 1) * PW;
+  const y = clamp(place.y, 0, 1) * PH;
+  try { doc.addImage(asset.dataUrl, "PNG", x, y, w, h); } catch { /* skip */ }
 }
 
 function fillField(doc, x, y, right, label, value) {
@@ -357,7 +373,7 @@ function fillField(doc, x, y, right, label, value) {
   else { setStroke(doc, GRID); doc.setLineWidth(0.25); doc.line(lx, y + 0.6, right, y + 0.6); }
 }
 
-function signatures(doc, o, y, accent, ctx = {}) {
+function signatures(doc, o, y, accent, ctx = {}, drawAssets = true) {
   setStroke(doc, accent);
   doc.setLineWidth(0.7);
   doc.line(BODY_L, y, BODY_R, y);
@@ -370,8 +386,13 @@ function signatures(doc, o, y, accent, ctx = {}) {
   doc.text("Accepted & Acknowledged by Candidate", RX, y);
 
   const sy = y + 9;
-  drawStampImage(doc, ctx.stamp, LX + sigW / 2, sy - 0.5, 30, 26);
-  drawStampImage(doc, ctx.signature, LX + sigW / 2, sy - 0.5, sigW - 6, 16);
+  // signature / stamp images: free placement when set, else auto above the line.
+  if (drawAssets) {
+    if (o.stampPlace) drawPlacedAsset(doc, ctx.stamp, o.stampPlace);
+    else drawStampImage(doc, ctx.stamp, LX + sigW / 2, sy - 0.5, 30, 26);
+    if (o.sigPlace) drawPlacedAsset(doc, ctx.signature, o.sigPlace);
+    else drawStampImage(doc, ctx.signature, LX + sigW / 2, sy - 0.5, sigW - 6, 16);
+  }
   setStroke(doc, INK);
   doc.setLineWidth(0.3);
   doc.line(LX, sy, LX + sigW, sy);

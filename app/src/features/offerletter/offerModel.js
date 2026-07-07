@@ -101,9 +101,17 @@ export const DEFAULT_OFFER = {
 
   // branding colour behaviour + sign-off assets + fine positioning
   useLetterheadColors: true,   // accent follows the picked letterhead
-  signatureId: "",             // saved signature stamped above "Authorized Signatory"
-  stampId: "",                 // saved company stamp near "[ Company Stamp ]"
-  contentOffset: 0,            // mm nudge of the whole body (fit to letterhead)
+  signatureId: "",             // saved signature drawn on the sign-off
+  stampId: "",                 // saved company stamp on the sign-off
+  // free placement of the signature / stamp images, as page fractions
+  // {x,y,w} (top-left + width). null -> auto position on the sign-off line.
+  sigPlace: null,
+  stampPlace: null,
+  // space (mm) reserved for the letterhead's printed header / footer, so the
+  // body auto-fits BETWEEN them. Only used when printing on a letterhead image.
+  headerSpace: 46,
+  footerSpace: 22,
+  contentOffset: 0,            // legacy fine nudge (kept for old drafts)
 };
 
 // Merge a saved draft over the defaults without dropping keys added later.
@@ -118,6 +126,8 @@ export function normalizeOffer(saved) {
     ];
   }
   o.customSections = Array.isArray(o.customSections) ? o.customSections : [];
+  if (typeof o.headerSpace !== "number") o.headerSpace = DEFAULT_OFFER.headerSpace;
+  if (typeof o.footerSpace !== "number") o.footerSpace = DEFAULT_OFFER.footerSpace;
   return o;
 }
 

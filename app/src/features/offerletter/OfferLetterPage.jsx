@@ -9,6 +9,7 @@ import { buildOffer } from "./offerPdf.js";
 import { DEFAULT_OFFER, normalizeOffer, salaryTotal, money } from "./offerModel.js";
 import { listLetterheads, listSignatures } from "../../lib/storage.js";
 import { scanPassport, aiConfigured } from "../../lib/aiClient.js";
+import SignaturePlacer from "./SignaturePlacer.jsx";
 
 const DRAFT_KEY = "offer-letter:draft";
 const STEPS = ["Letterhead", "Candidate", "Role & terms", "Finish"];
@@ -51,6 +52,7 @@ export default function OfferLetterPage({ onExit, storeKey }) {
   const [step, setStep] = useState(0);
   const [scanning, setScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState("");
+  const [placerOpen, setPlacerOpen] = useState(false);
   const debounce = useRef(null);
 
   const set1 = (patch) => setO((p) => ({ ...p, ...patch }));
@@ -143,6 +145,15 @@ export default function OfferLetterPage({ onExit, storeKey }) {
     }
   }
 
+  // open the drag/resize placer, seeding a sensible default spot if unplaced
+  function openPlacer() {
+    const patch = {};
+    if (ctx.signature && !o.sigPlace) patch.sigPlace = { x: 0.20, y: 0.80, w: 0.20 };
+    if (ctx.stamp && !o.stampPlace) patch.stampPlace = { x: 0.21, y: 0.865, w: 0.12 };
+    if (Object.keys(patch).length) set1(patch);
+    setPlacerOpen(true);
+  }
+
   const next = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
   const back = () => setStep((s) => Math.max(0, s - 1));
 
@@ -200,6 +211,19 @@ export default function OfferLetterPage({ onExit, storeKey }) {
                       </label>
                     )}
                   </div>
+
+                  {o.useLetterhead && (
+                    <div className="rounded-xl bg-[#f6f7f9] p-3 ring-1 ring-black/[0.05]">
+                      <p className="mb-2 text-[11px] font-semibold text-navy">Space for the letterhead’s header &amp; footer</p>
+                      <Field label={`Header space — top ${o.headerSpace} mm`} hint="Push the letter below your logo / header band.">
+                        <input type="range" min={20} max={90} value={o.headerSpace} onChange={(e) => set1({ headerSpace: Number(e.target.value) })} className="w-full accent-magenta" />
+                      </Field>
+                      <Field label={`Footer space — bottom ${o.footerSpace} mm`} hint="Keep clear of the printed footer (phone / email).">
+                        <input type="range" min={10} max={55} value={o.footerSpace} onChange={(e) => set1({ footerSpace: Number(e.target.value) })} className="w-full accent-magenta" />
+                      </Field>
+                      <p className="text-[10.5px] text-slate/60">The letter auto-shrinks to fit exactly between these two — always one page.</p>
+                    </div>
+                  )}
 
                   {!o.useLetterhead && (
                     <>
@@ -351,9 +375,15 @@ export default function OfferLetterPage({ onExit, storeKey }) {
                     </Field>
                   </div>
                   {!signatures.length && <p className="text-[10.5px] text-slate/60">No saved signatures/stamps yet — add them in “✒ Sign a PDF”.</p>}
-                  <Field label={`Nudge content down onto the letterhead (${o.contentOffset || 0} mm)`} hint="Only needed if the header overlaps — auto-fit handles the rest.">
-                    <input type="range" min={-15} max={40} value={o.contentOffset || 0} onChange={(e) => set1({ contentOffset: Number(e.target.value) })} className="w-full accent-magenta" />
-                  </Field>
+                  {(ctx.signature || ctx.stamp) && (
+                    <div className="flex items-center gap-2">
+                      <button onClick={openPlacer} className="rounded-full bg-magenta px-3 py-1.5 text-xs font-bold text-white transition hover:bg-magenta/90">✥ Drag &amp; resize on page</button>
+                      {(o.sigPlace || o.stampPlace) && (
+                        <button onClick={() => set1({ sigPlace: null, stampPlace: null })} className="text-xs font-semibold text-slate hover:text-magenta">reset position</button>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-[10.5px] text-slate/60">Pick a signature/stamp above, then drag it exactly where you want it to print.</p>
                 </Card>
 
                 <button onClick={download} className="btn-primary w-full justify-center py-3">Download PDF</button>
@@ -393,6 +423,10 @@ export default function OfferLetterPage({ onExit, storeKey }) {
           </div>
         </main>
       </div>
+
+      {placerOpen && (
+        <SignaturePlacer o={o} ctx={ctx} onChange={set1} onClose={() => setPlacerOpen(false)} />
+      )}
     </div>
   );
 }
