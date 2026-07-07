@@ -1,11 +1,10 @@
 // offerPdf.js — renders the EMPLOYMENT OFFER LETTER to a print-ready A4 PDF,
-// pixel-faithful to the LA MODA reference. Pure jsPDF, fully deterministic:
-// the same form always produces the same document (no AI in this path).
+// faithful to the LA MODA reference. Pure jsPDF, fully deterministic.
 //
-// Layout model (mm, A4 210x297):
-//   body text spans the full width 13..197
-//   the info / remuneration / hours tables sit in a centred 40..170 block
-//   accent magenta (#CC0066) drives section headings + table header bands
+// ONE PAGE, ALWAYS: the body is measured, then a single scale factor shrinks
+// every font / line-height / gap / table row just enough for the whole letter
+// + the signature block to fit on a single A4 between the header and footer
+// zones. No second page is ever produced.
 import { jsPDF } from "jspdf";
 import {
   money, salaryTotal, formatOfferDate, who,
@@ -19,6 +18,9 @@ const BODY_L = ML, BODY_R = PW - MR; // 13 .. 197
 const BODY_W = BODY_R - BODY_L;      // 184
 const TBL_L = 40, TBL_R = 170;       // centred table block
 const TBL_W = TBL_R - TBL_L;         // 130
+const SIG_H = 32;                    // signature block footprint (unscaled)
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 function hexRgb(hex) {
   const h = String(hex || "#CC0066").replace("#", "");
@@ -35,8 +37,6 @@ const PANEL = { r: 244, g: 245, b: 247 };
 const WHITE = { r: 255, g: 255, b: 255 };
 
 // ---- justified inline-bold paragraph flow ---------------------------------
-// Splits a rich string into words (each a list of bold/normal runs), greedily
-// breaks lines to `w`, and full-justifies every line except the last.
 function richWords(segs) {
   const words = [];
   let cur = null;
@@ -73,7 +73,6 @@ function drawRich(doc, rich, x, y, w, opt = {}) {
   doc.setFont(font, "normal").setFontSize(size);
   const spaceW = doc.getTextWidth(" ");
 
-  // greedy line break
   const lines = [];
   let line = [], lineW = 0;
   for (const word of words) {
@@ -101,7 +100,7 @@ function drawRich(doc, rich, x, y, w, opt = {}) {
     });
     cy += lh;
   });
-  return cy - lh + lh; // bottom baseline advanced by one line
+  return cy;
 }
 
 // ---- chrome ---------------------------------------------------------------
@@ -112,15 +111,12 @@ function drawLetterheadBg(doc, lh) {
   try { doc.addImage(lh.dataUrl, fmt, 0, 0, PW, PH, undefined, "FAST"); } catch { /* skip */ }
 }
 
-// Drawn header (used when NOT printing on a letterhead image). Optional logo at
-// the left, company wordmark, magenta underline. Returns y at header bottom.
+// Drawn header (used when NOT printing on a letterhead image).
 function drawHeader(doc, o, accent) {
   let nameX = PW / 2, align = "center";
   if (o.logoDataUrl) {
-    try {
-      doc.addImage(o.logoDataUrl, "PNG", ML, 8, 22, 22);
-      nameX = ML + 27; align = "left";
-    } catch { /* ignore bad logo */ }
+    try { doc.addImage(o.logoDataUrl, "PNG", ML, 8, 22, 22); nameX = ML + 27; align = "left"; }
+    catch { /* ignore */ }
   }
   setInk(doc, INK);
   doc.setFont("helvetica", "bold").setFontSize(o.logoDataUrl ? 15 : 17);
@@ -142,15 +138,13 @@ function drawFooter(doc, o, accent) {
   if (o.footerLine2) doc.text(o.footerLine2, PW / 2, PH - 2.8, { align: "center" });
 }
 
-// Magenta section heading "N. TITLE". Returns y below it.
-function sectionHead(doc, n, title, y, accent) {
+function sectionHead(doc, n, title, y, accent, S) {
   setInk(doc, accent);
-  doc.setFont("helvetica", "bold").setFontSize(9.3);
+  doc.setFont("helvetica", "bold").setFontSize(9.3 * S);
   doc.text(`${n}. ${title}`, BODY_L, y);
-  return y + 4.8;
+  return y + 4.8 * S;
 }
 
-// A cell with border + optional fill.
 function cell(doc, x, y, w, h, { fill } = {}) {
   if (fill) { setFill(doc, fill); doc.rect(x, y, w, h, "F"); }
   setStroke(doc, GRID);
@@ -158,42 +152,31 @@ function cell(doc, x, y, w, h, { fill } = {}) {
   doc.rect(x, y, w, h, "S");
 }
 
-// ---- main builder ---------------------------------------------------------
-export function buildOffer(o, ctx = {}) {
-  const accent = hexRgb(o.accent);
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
-  const letterhead = o.useLetterhead ? ctx.letterhead : null;
+// ---- body layout (scaled by S) — returns the y at the bottom of the body ----
+function layoutBody(doc, o, accent, S, top) {
+  let y = top;
 
-  let y;
-  if (letterhead && letterhead.dataUrl) {
-    drawLetterheadBg(doc, letterhead);
-    y = (letterhead.marginTop || 30) + 5;
-  } else {
-    y = drawHeader(doc, o, accent) + 4;
-  }
-  y += Number(o.contentOffset) || 0; // fine vertical nudge to fit the letterhead
-
-  // ---- title block ----
+  // title block
   setInk(doc, INK);
-  doc.setFont("helvetica", "bold").setFontSize(13);
+  doc.setFont("helvetica", "bold").setFontSize(13 * S);
   doc.text("EMPLOYMENT OFFER LETTER", PW / 2, y, { align: "center" });
-  y += 4.6;
+  y += 4.6 * S;
   setInk(doc, SOFT);
-  doc.setFont("helvetica", "italic").setFontSize(8.2);
+  doc.setFont("helvetica", "italic").setFontSize(8.2 * S);
   doc.text("Strictly Private & Confidential", PW / 2, y, { align: "center" });
-  y += 3.4;
+  y += 3.4 * S;
   setStroke(doc, accent);
   doc.setLineWidth(0.7);
   doc.line(BODY_L, y, BODY_R, y);
-  y += 4.6;
+  y += 4.6 * S;
 
-  // ---- info grid (Date/Ref, Candidate/Nationality, Passport/Position) ----
+  // info grid
   const rows = [
     ["Date", formatOfferDate(o.date), "Ref. No.", o.refNo],
     ["Candidate", who(o), "Nationality", o.nationality],
     ["Passport No.", o.passportNo, "Position", o.position],
   ];
-  const RH = 6.4;
+  const RH = 6.4 * S;
   const cx = { l1: TBL_L, v1: TBL_L + 24, l2: TBL_L + 65, v2: TBL_L + 89 };
   const cw = { l1: 24, v1: 41, l2: 24, v2: 41 };
   rows.forEach((r, i) => {
@@ -203,7 +186,7 @@ export function buildOffer(o, ctx = {}) {
     cell(doc, cx.l2, ry, cw.l2, RH, { fill: PANEL });
     cell(doc, cx.v2, ry, cw.v2, RH);
     const ty = ry + RH * 0.64;
-    doc.setFontSize(8.3);
+    doc.setFontSize(8.3 * S);
     setInk(doc, INK);
     doc.setFont("helvetica", "bold");
     doc.text(r[0], cx.l1 + 2.5, ty);
@@ -213,85 +196,99 @@ export function buildOffer(o, ctx = {}) {
     doc.text(String(r[1] || ""), cx.v1 + 2.5, ty);
     doc.text(String(r[3] || ""), cx.v2 + 2.5, ty);
   });
-  y += rows.length * RH + 5;
+  y += rows.length * RH + 5 * S;
 
-  // ---- salutation + opening ----
+  // salutation + opening
+  const bodySize = 8.4 * S, bodyLh = 3.82 * S;
+  const para = (rich, opt = {}) => drawRich(doc, rich, BODY_L, y, BODY_W, { size: bodySize, lh: bodyLh, ...opt });
   setInk(doc, INK);
-  doc.setFont("helvetica", "normal").setFontSize(8.6);
+  doc.setFont("helvetica", "normal").setFontSize(8.6 * S);
   doc.text(`Dear ${who(o)},`, BODY_L, y);
-  y += 4.2;
-  y = drawRich(doc, openingPara(o), BODY_L, y, BODY_W) + 2.2;
+  y += 4.2 * S;
+  y = para(openingPara(o)) + 2.2 * S;
 
-  // ---- 1. POSITION & DUTIES ----
-  y = sectionHead(doc, 1, SECTIONS[0].title, y, accent);
-  y = drawRich(doc, dutiesPara(o), BODY_L, y, BODY_W) + 2.4;
+  // 1. duties
+  y = sectionHead(doc, 1, SECTIONS[0].title, y, accent, S);
+  y = para(dutiesPara(o)) + 2.4 * S;
 
-  // ---- 2. REMUNERATION ----
-  y = sectionHead(doc, 2, SECTIONS[1].title, y, accent);
-  y = remunerationTable(doc, o, y, accent);
-  y += 1.3;
+  // 2. remuneration
+  y = sectionHead(doc, 2, SECTIONS[1].title, y, accent, S);
+  y = remunerationTable(doc, o, y, accent, S) + 1.3 * S;
   setInk(doc, INK);
-  y = drawRich(doc, wpsNote, BODY_L, y, BODY_W, { justify: false }) + 2.2;
+  y = para(wpsNote, { justify: false }) + 2.2 * S;
 
-  // ---- 3. PROBATION / VISA ----
-  y = sectionHead(doc, 3, SECTIONS[2].title, y, accent);
-  y = drawRich(doc, probationPara(o), BODY_L, y, BODY_W) + 2.4;
+  // 3. probation
+  y = sectionHead(doc, 3, SECTIONS[2].title, y, accent, S);
+  y = para(probationPara(o)) + 2.4 * S;
 
-  // ---- 4. WORKING HOURS & LEAVE ----
-  y = sectionHead(doc, 4, SECTIONS[3].title, y, accent);
-  y = leaveTable(doc, o.leave, y, accent) + 2.4;
+  // 4. working hours & leave
+  y = sectionHead(doc, 4, SECTIONS[3].title, y, accent, S);
+  y = leaveTable(doc, o.leave, y, accent, S) + 2.4 * S;
 
-  // ---- 5. BENEFITS ----
-  y = sectionHead(doc, 5, SECTIONS[4].title, y, accent);
-  y = drawRich(doc, benefitsPara(o), BODY_L, y, BODY_W) + 2.4;
+  // 5. benefits
+  y = sectionHead(doc, 5, SECTIONS[4].title, y, accent, S);
+  y = para(benefitsPara(o)) + 2.4 * S;
 
-  // ---- 6. GOVERNING LAW / VALIDITY ----
-  y = sectionHead(doc, 6, SECTIONS[5].title, y, accent);
-  y = drawRich(doc, validityPara(o), BODY_L, y, BODY_W);
+  // 6. governing law / validity
+  y = sectionHead(doc, 6, SECTIONS[5].title, y, accent, S);
+  y = para(validityPara(o));
 
-  // ---- 7+. custom clauses (same design, continued numbering) ----
+  // 7+. custom clauses
   (o.customSections || []).forEach((s, i) => {
     if (!s || (!s.title && !s.body)) return;
-    y += 2.4;
-    y = sectionHead(doc, 7 + i, (s.title || "ADDITIONAL TERMS").toUpperCase(), y, accent);
-    y = drawRich(doc, s.body || "", BODY_L, y, BODY_W);
+    y += 2.4 * S;
+    y = sectionHead(doc, 7 + i, (s.title || "ADDITIONAL TERMS").toUpperCase(), y, accent, S);
+    y = para(s.body || "");
   });
 
-  // ---- signatures ---- anchored above the footer so they never collide; sits
-  // lower with a clean gap when the body is short (matches the reference). If
-  // the body is long (extra clauses), overflow the block to a second page so it
-  // never crashes into the footer.
-  const SIG_BLOCK_H = 34, FOOT_TOP = PH - 14;
-  let sigTop = Math.max(y + 5, PH - 47);
-  if (sigTop + SIG_BLOCK_H > FOOT_TOP) {
-    doc.addPage();
-    if (letterhead && letterhead.dataUrl) drawLetterheadBg(doc, letterhead);
-    sigTop = (letterhead && letterhead.dataUrl ? (letterhead.marginTop || 30) + 10 : 30);
-  }
-  signatures(doc, o, sigTop, accent, ctx);
+  return y;
+}
 
-  // footer on every page (drawn mode only — letterhead images carry their own)
-  if (!(letterhead && letterhead.dataUrl)) {
-    const n = doc.getNumberOfPages();
-    for (let p = 1; p <= n; p++) { doc.setPage(p); drawFooter(doc, o, accent); }
+// ---- main builder ---------------------------------------------------------
+export function buildOffer(o, ctx = {}) {
+  const accent = hexRgb(o.accent);
+  const letterhead = o.useLetterhead ? ctx.letterhead : null;
+  const onLetterhead = !!(letterhead && letterhead.dataUrl);
+
+  const top = (onLetterhead ? (letterhead.marginTop || 30) + 5 : 35) + (Number(o.contentOffset) || 0);
+  const footerReserve = onLetterhead ? Math.max(14, letterhead.marginBottom || 16) : 15;
+  const sigTop = PH - footerReserve - SIG_H;
+  const target = sigTop - 3; // body must end above the signature block
+
+  // ---- fit pass: shrink until the body ends above the signature zone ----
+  let S = 1;
+  for (let i = 0; i < 8; i++) {
+    const scratch = new jsPDF({ unit: "mm", format: "a4" });
+    const bottom = layoutBody(scratch, o, accent, S, top);
+    if (bottom <= target) break;
+    const factor = (target - top) / (bottom - top); // < 1 when overflowing
+    if (factor >= 0.999) break;
+    S = clamp(S * Math.max(factor, 0.9), 0.6, 1); // step down gently, floor 0.6
+    if (S <= 0.6) break;
   }
+
+  // ---- final draw ----
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  if (onLetterhead) drawLetterheadBg(doc, letterhead);
+  else drawHeader(doc, o, accent);
+  layoutBody(doc, o, accent, S, top);
+  signatures(doc, o, sigTop, accent, ctx);
+  if (!onLetterhead) drawFooter(doc, o, accent);
   return doc;
 }
 
-function remunerationTable(doc, o, y, accent) {
-  const HH = 7.2, RH = 6.6, amtX = TBL_R - 3;
-  // header band
+function remunerationTable(doc, o, y, accent, S) {
+  const HH = 7.2 * S, RH = 6.6 * S, amtX = TBL_R - 3;
   setFill(doc, accent);
   doc.rect(TBL_L, y, TBL_W, HH, "F");
   setInk(doc, WHITE);
-  doc.setFont("helvetica", "bold").setFontSize(8.6);
+  doc.setFont("helvetica", "bold").setFontSize(8.6 * S);
   doc.text("Component", TBL_L + 3, y + HH * 0.64);
   doc.text(`Monthly (${o.currency})`, amtX, y + HH * 0.64, { align: "right" });
   let ry = y + HH;
-  // data rows
   o.salary.forEach((r) => {
     setInk(doc, INK);
-    doc.setFont("helvetica", "normal").setFontSize(8.6);
+    doc.setFont("helvetica", "normal").setFontSize(8.6 * S);
     doc.text(r.label, TBL_L + 3, ry + RH * 0.62);
     doc.text(money(r.amount), amtX, ry + RH * 0.62, { align: "right" });
     setStroke(doc, GRID);
@@ -299,36 +296,34 @@ function remunerationTable(doc, o, y, accent) {
     doc.line(TBL_L, ry + RH, TBL_R, ry + RH);
     ry += RH;
   });
-  // total row
   setFill(doc, PANEL);
   doc.rect(TBL_L, ry, TBL_W, HH, "F");
   setStroke(doc, accent);
   doc.setLineWidth(0.5);
   doc.line(TBL_L, ry, TBL_R, ry);
   setInk(doc, INK);
-  doc.setFont("helvetica", "bold").setFontSize(8.8);
+  doc.setFont("helvetica", "bold").setFontSize(8.8 * S);
   doc.text("Total Gross Salary", TBL_L + 3, ry + HH * 0.64);
   doc.text(money(salaryTotal(o.salary)), amtX, ry + HH * 0.64, { align: "right" });
-  // outer border
   setStroke(doc, GRID);
   doc.setLineWidth(0.2);
   doc.rect(TBL_L, y, TBL_W, HH + o.salary.length * RH + HH, "S");
   return ry + HH;
 }
 
-function leaveTable(doc, rows, y, accent) {
-  const HH = 6.4, RH = 6.4, itemW = 52, detX = TBL_L + itemW;
+function leaveTable(doc, rows, y, accent, S) {
+  const HH = 6.4 * S, RH = 6.4 * S, itemW = 52, detX = TBL_L + itemW;
   const data = (rows || []).filter((r) => r && (r.item || r.detail));
   setFill(doc, accent);
   doc.rect(TBL_L, y, TBL_W, HH, "F");
   setInk(doc, WHITE);
-  doc.setFont("helvetica", "bold").setFontSize(8.4);
+  doc.setFont("helvetica", "bold").setFontSize(8.4 * S);
   doc.text("Item", TBL_L + 3, y + HH * 0.64);
   doc.text("Detail", detX + 3, y + HH * 0.64);
   let ry = y + HH;
   data.forEach(({ item, detail }) => {
     setInk(doc, INK);
-    doc.setFont("helvetica", "bold").setFontSize(8.4);
+    doc.setFont("helvetica", "bold").setFontSize(8.4 * S);
     doc.text(String(item || ""), TBL_L + 3, ry + RH * 0.62);
     doc.setFont("helvetica", "normal");
     setInk(doc, SOFT);
@@ -341,34 +336,25 @@ function leaveTable(doc, rows, y, accent) {
   setStroke(doc, GRID);
   doc.setLineWidth(0.2);
   doc.rect(TBL_L, y, TBL_W, HH + data.length * RH, "S");
-  doc.line(detX, y, detX, ry); // column divider
+  doc.line(detX, y, detX, ry);
   return ry;
 }
 
-// draw a saved signature / stamp image centred on (cx, baseY-ish), scaled to a
-// target width, keeping aspect. `above` places it sitting on the y line.
 function drawStampImage(doc, asset, cx, y, maxW, maxH) {
   if (!asset || !asset.dataUrl) return;
-  const aspect = asset.aspect || 0.5; // h/w
+  const aspect = asset.aspect || 0.5;
   let w = maxW, h = w * aspect;
   if (h > maxH) { h = maxH; w = h / aspect; }
   try { doc.addImage(asset.dataUrl, "PNG", cx - w / 2, y - h, w, h); } catch { /* skip */ }
 }
 
-// label + fill-in line (or the value when known)
 function fillField(doc, x, y, right, label, value) {
   setInk(doc, INK);
   doc.setFont("helvetica", "normal").setFontSize(8);
   doc.text(label, x, y);
   const lx = x + doc.getTextWidth(label) + 1;
-  if (value) {
-    setInk(doc, SOFT);
-    doc.text(String(value), lx, y);
-  } else {
-    setStroke(doc, GRID);
-    doc.setLineWidth(0.25);
-    doc.line(lx, y + 0.6, right, y + 0.6);
-  }
+  if (value) { setInk(doc, SOFT); doc.text(String(value), lx, y); }
+  else { setStroke(doc, GRID); doc.setLineWidth(0.25); doc.line(lx, y + 0.6, right, y + 0.6); }
 }
 
 function signatures(doc, o, y, accent, ctx = {}) {
@@ -383,9 +369,7 @@ function signatures(doc, o, y, accent, ctx = {}) {
   doc.text(`For ${o.company}`, LX, y);
   doc.text("Accepted & Acknowledged by Candidate", RX, y);
 
-  // signature lines
   const sy = y + 9;
-  // stamp the saved company stamp + authorized signature above the left line
   drawStampImage(doc, ctx.stamp, LX + sigW / 2, sy - 0.5, 30, 26);
   drawStampImage(doc, ctx.signature, LX + sigW / 2, sy - 0.5, sigW - 6, 16);
   setStroke(doc, INK);
