@@ -10,6 +10,7 @@ import { DEFAULT_OFFER, normalizeOffer, salaryTotal, money } from "./offerModel.
 import { listLetterheads, listSignatures } from "../../lib/storage.js";
 import { scanPassport, aiConfigured } from "../../lib/aiClient.js";
 import SignaturePlacer from "./SignaturePlacer.jsx";
+import { offerToElements } from "./offerToElements.js";
 
 const DRAFT_KEY = "offer-letter:draft";
 const STEPS = ["Letterhead", "Candidate", "Role & terms", "Finish"];
@@ -43,7 +44,7 @@ function Card({ title, hint, children }) {
   );
 }
 
-export default function OfferLetterPage({ onExit, storeKey }) {
+export default function OfferLetterPage({ onExit, storeKey, onOpenInEditor }) {
   const [o, setO] = useState(DEFAULT_OFFER);
   const [letterheads, setLetterheads] = useState([]);
   const [signatures, setSignatures] = useState([]);
@@ -154,6 +155,14 @@ export default function OfferLetterPage({ onExit, storeKey }) {
     setPlacerOpen(true);
   }
 
+  // "explode" the letter into free, fully-editable canvas blocks and hand them
+  // to the studio editor (drag / resize / delete / edit everything, Canva-style).
+  function editFreely() {
+    if (!onOpenInEditor) return;
+    if (!confirm("Open the letter in the free canvas editor?\n\nEvery block becomes draggable, resizable and deletable — but the automatic one-page fit no longer applies (you arrange it yourself). Your form here stays saved.")) return;
+    onOpenInEditor(offerToElements(o, ctx));
+  }
+
   const next = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
   const back = () => setStep((s) => Math.max(0, s - 1));
 
@@ -167,12 +176,18 @@ export default function OfferLetterPage({ onExit, storeKey }) {
             <p className="mt-1 text-[11px] text-slate/80">Guided · always fits on one page</p>
           </div>
         </div>
-        <button onClick={download} className="btn-primary px-4 py-2.5">Download PDF</button>
+        <div className="flex items-center gap-2">
+          <button onClick={editFreely} title="Open in the free drag-and-drop editor"
+            className="hidden items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-2 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3] sm:flex">
+            ✥ Edit freely
+          </button>
+          <button onClick={download} className="btn-primary px-4 py-2.5">Download</button>
+        </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* ---- guided form ---- */}
-        <aside className="flex w-[440px] shrink-0 flex-col border-r border-black/[0.06] bg-[#eef0f3]">
+        <aside className="flex max-h-[62vh] w-full shrink-0 flex-col border-b border-black/[0.06] bg-[#eef0f3] md:max-h-none md:w-[440px] md:border-b-0 md:border-r">
           {/* step chips */}
           <div className="flex items-center gap-1.5 border-b border-black/[0.05] bg-white/60 px-4 py-3">
             {STEPS.map((label, i) => (
@@ -386,6 +401,12 @@ export default function OfferLetterPage({ onExit, storeKey }) {
                   <p className="text-[10.5px] text-slate/60">Pick a signature/stamp above, then drag it exactly where you want it to print.</p>
                 </Card>
 
+                <div className="rounded-2xl bg-navy p-4 text-white">
+                  <h3 className="text-[13px] font-extrabold">Want full control?</h3>
+                  <p className="mt-1 text-[11px] leading-snug text-white/70">Open the letter in the free canvas editor — drag, resize, delete or edit every heading, table, line, signature and stamp, anywhere on the page (mobile too).</p>
+                  <button onClick={editFreely} className="mt-2.5 w-full rounded-xl bg-magenta py-2.5 text-sm font-bold text-white transition hover:bg-magenta/90">✥ Edit everything (free canvas)</button>
+                </div>
+
                 <button onClick={download} className="btn-primary w-full justify-center py-3">Download PDF</button>
                 <button onClick={() => { if (confirm("Reset all fields to the template defaults? Candidate entries will be cleared.")) { setO(DEFAULT_OFFER); setStep(0); } }}
                   className="w-full rounded-xl px-3 py-2 text-sm font-semibold text-slate ring-1 ring-black/[0.06] transition hover:bg-white">
@@ -409,7 +430,7 @@ export default function OfferLetterPage({ onExit, storeKey }) {
         </aside>
 
         {/* ---- live preview ---- */}
-        <main className="flex min-w-0 flex-1 flex-col items-center overflow-auto p-6" style={{ background: "radial-gradient(1000px 600px at 50% -10%, rgba(204,0,102,0.06), transparent 55%), #e9ebef" }}>
+        <main className="flex min-h-[42vh] min-w-0 flex-1 flex-col items-center overflow-auto p-4 md:min-h-0 md:p-6" style={{ background: "radial-gradient(1000px 600px at 50% -10%, rgba(204,0,102,0.06), transparent 55%), #e9ebef" }}>
           <div className="w-full max-w-[720px]">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-slate/70">Live preview</span>

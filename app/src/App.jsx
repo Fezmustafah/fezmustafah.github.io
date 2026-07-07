@@ -154,7 +154,17 @@ export default function App() {
   }
 
   if (mode === "offer") {
-    return <OfferLetterPage onExit={() => setMode("studio")} storeKey={storeKey} />;
+    return (
+      <OfferLetterPage
+        onExit={() => setMode("studio")}
+        storeKey={storeKey}
+        onOpenInEditor={(payload) => {
+          dispatch({ type: "SET_LETTERHEAD", patch: payload.letterhead });
+          dispatch({ type: "SET_ELEMENTS", elements: payload.elements });
+          setMode("studio");
+        }}
+      />
+    );
   }
 
   if (vp.isMobile) {
