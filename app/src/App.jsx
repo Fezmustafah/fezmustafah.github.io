@@ -13,6 +13,7 @@ import MobileShell from "./editor/MobileShell.jsx";
 import Tutorial, { seenOnboarding } from "./editor/Tutorial.jsx";
 import SignPdf from "./sign/SignPdf.jsx";
 import TrackerPage from "./features/tracker/TrackerPage.jsx";
+import VendorsPage from "./features/vendors/VendorsPage.jsx";
 import OfferLetterPage from "./features/offerletter/OfferLetterPage.jsx";
 import { useViewport } from "./editor/useViewport.js";
 import AuthBar from "./auth/AuthBar.jsx";
@@ -153,6 +154,10 @@ export default function App() {
     return <TrackerPage onExit={() => setMode("studio")} storeKey={storeKey} />;
   }
 
+  if (mode === "vendors") {
+    return <VendorsPage onExit={() => setMode("studio")} storeKey={storeKey} />;
+  }
+
   if (mode === "offer") {
     return (
       <OfferLetterPage
@@ -178,6 +183,7 @@ export default function App() {
           onSignup={() => setShowTutorial(true)} onHelp={() => setShowTutorial(true)}
           onSignMode={() => setMode("sign")}
           onTrackerMode={() => setMode("tracker")}
+          onVendorMode={() => setMode("vendors")}
           onOfferMode={() => setMode("offer")}
           storeKey={storeKey}
           onPreview={preview} onDownload={download} onClear={clearLayout}
@@ -210,6 +216,10 @@ export default function App() {
           <button onClick={() => setMode("tracker")} title="Daily Invoice Tracker"
             className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
             📋 Daily Tracker
+          </button>
+          <button onClick={() => setMode("vendors")} title="Vendor Statements & netting"
+            className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
+            📒 Vendors
           </button>
           <button onClick={() => setMode("sign")} title="Sign an existing PDF"
             className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">

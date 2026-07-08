@@ -11,7 +11,7 @@ export default function MobileShell({
   storeKey,
   onPreview, onDownload, onClear, onAddText, onAddTable, onAddLine, onOpenStamp,
   onLoadTemplate, templates, MarginControls, AccentInput,
-  AuthBar, onAuthChange, onSignup, onHelp, onSignMode, onTrackerMode, onOfferMode,
+  AuthBar, onAuthChange, onSignup, onHelp, onSignMode, onTrackerMode, onVendorMode, onOfferMode,
 }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
@@ -124,6 +124,7 @@ export default function MobileShell({
                   <button onClick={() => { onPreview(); close(); }} className="tap w-full rounded-lg border border-navy px-3 py-2 text-sm text-navy">Preview PDF</button>
                   <button onClick={() => { onOfferMode?.(); close(); }} className="tap w-full rounded-lg border border-brass bg-brass/[0.06] px-3 py-2 text-sm font-semibold text-navy">📝 Employment Offer Letter</button>
                   <button onClick={() => { onTrackerMode?.(); close(); }} className="tap w-full rounded-lg border border-brass bg-brass/[0.06] px-3 py-2 text-sm font-semibold text-navy">📋 Daily Invoice Tracker</button>
+                  <button onClick={() => { onVendorMode?.(); close(); }} className="tap w-full rounded-lg border border-brass bg-brass/[0.06] px-3 py-2 text-sm font-semibold text-navy">📒 Vendor Statements</button>
                   <button onClick={() => { onSignMode?.(); close(); }} className="tap w-full rounded-lg border border-brass bg-brass/[0.06] px-3 py-2 text-sm font-semibold text-navy">✒ Sign an existing PDF</button>
                   <div className="grid grid-cols-2 gap-2">
                     <button onClick={() => { onHelp?.(); close(); }} className="tap rounded-lg border border-hairline px-3 py-2 text-sm text-navy">How it works</button>

@@ -45,10 +45,23 @@ create table if not exists public.tracker_data (
   primary key (user_id, key)
 );
 
+-- Vendor Statements data: a per-user key/value store like tracker_data. Keys are
+-- 'vendors', 'rates', and 'ledger:<vendorId>:<YYYY-MM>'; values are JSON blobs.
+-- One signed ledger per vendor per month (AR vs AP netting) follows the account
+-- across devices.
+create table if not exists public.vendor_data (
+  user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  key        text not null,
+  value      jsonb,
+  updated_at timestamptz default now(),
+  primary key (user_id, key)
+);
+
 alter table public.letterheads  enable row level security;
 alter table public.layouts      enable row level security;
 alter table public.signatures   enable row level security;
 alter table public.tracker_data enable row level security;
+alter table public.vendor_data  enable row level security;
 
 -- one policy per table: full access to your own rows only.
 -- drop-then-create so the whole file is safe to re-run (policies have no
@@ -69,9 +82,17 @@ drop policy if exists "own tracker_data" on public.tracker_data;
 create policy "own tracker_data" on public.tracker_data
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "own vendor_data" on public.vendor_data;
+create policy "own vendor_data" on public.vendor_data
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
 -- enable realtime so a change on one device pushes to the others instantly
 -- (safe to re-run: ignored if the table is already in the publication).
 do $$ begin
   alter publication supabase_realtime add table public.tracker_data;
+exception when others then null;
+end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.vendor_data;
 exception when others then null;
 end $$;
