@@ -1,7 +1,7 @@
 // offerModel.js — data model, defaults, theme and text templates for the
 // EMPLOYMENT OFFER LETTER generator. This is a DETERMINISTIC document: every
 // field maps to a fixed place in the PDF, so the output is identical every time
-// (no AI / Gemini variance). Modelled 1:1 on the LA MODA reference letter.
+// (no AI / Gemini variance). Modelled on a standard UAE employment offer letter.
 
 // Magenta accent sampled from the reference PDF header/section bands.
 export const OFFER_ACCENT = "#CC0066";
@@ -42,30 +42,30 @@ function todayIso() {
 // form asks for them each time, and they are never committed to the repo.
 export const DEFAULT_OFFER = {
   // branding
-  company: "LA MODA BEAUTY SALOON L.L.C S.O.C",
+  company: "Company Name L.L.C",
   companyCity: "Dubai, U.A.E.",
   accent: OFFER_ACCENT,
   logoDataUrl: "",           // optional logo for the drawn header
   useLetterhead: false,      // true -> print on a saved letterhead image
   letterheadId: "",
-  footerLine1: "",           // e.g. "Mob.: 054 444 1530, Dubai, UAE, Email : ..."
-  footerLine2: "",           // e.g. "Dubai-U.A.E"
+  footerLine1: "",           // e.g. "Mob.: +000 000 0000, City, Country, Email : ..."
+  footerLine2: "",           // e.g. "City - Country"
 
   // meta
   date: todayIso(),
   refNo: "",
 
-  // candidate
+  // candidate (all blank — filled per letter, never stored in the repo)
   salutation: "Mr.",
   candidateName: "",
   nationality: "",
   passportNo: "",
-  position: "Ladies Hairdresser",
-  reportingTo: "Salon Manager",
+  position: "",
+  reportingTo: "the Manager",
 
   // 1. duties
   duties:
-    "professional hairdressing, cutting, styling, colouring and related hair-care services for the Salon's clientele in accordance with Dubai Municipality health and hygiene standards, client consultation, maintaining strict hygiene protocols, and full adherence to all Company policies and service standards",
+    "carrying out all duties and responsibilities associated with the role in a professional manner, in accordance with the applicable Dubai Municipality and UAE standards, client consultation, maintaining strict hygiene and safety protocols, and full adherence to all Company policies and service standards",
 
   // 2. remuneration
   currency: "AED",
@@ -143,7 +143,7 @@ export function parseRich(str) {
   return out.length ? out : [{ text: "", bold: false }];
 }
 
-// Salutation + name, e.g. "Mr. Alaa Naddaf".
+// Salutation + name, e.g. "Mr. John Smith".
 export const who = (o) => `${o.salutation || ""} ${o.candidateName || ""}`.trim();
 
 // ---- section body builders (interpolate the form into the legal clauses) ---

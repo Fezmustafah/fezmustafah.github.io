@@ -1,5 +1,5 @@
 // offerPdf.js — renders the EMPLOYMENT OFFER LETTER to a print-ready A4 PDF,
-// faithful to the LA MODA reference. Pure jsPDF, fully deterministic.
+// faithful to a standard UAE offer letter. Pure jsPDF, fully deterministic.
 //
 // ONE PAGE, ALWAYS: the body is measured, then a single scale factor shrinks
 // every font / line-height / gap / table row just enough for the whole letter

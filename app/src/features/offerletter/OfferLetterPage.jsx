@@ -242,7 +242,7 @@ export default function OfferLetterPage({ onExit, storeKey, onOpenInEditor }) {
 
                   {!o.useLetterhead && (
                     <>
-                      <Field label="Company name"><Text value={o.company} onChange={(v) => set1({ company: v })} placeholder="LA MODA BEAUTY SALOON L.L.C S.O.C" /></Field>
+                      <Field label="Company name"><Text value={o.company} onChange={(v) => set1({ company: v })} placeholder="Company Name L.L.C" /></Field>
                       <Field label="City / country"><Text value={o.companyCity} onChange={(v) => set1({ companyCity: v })} placeholder="Dubai, U.A.E." /></Field>
                       <Field label="Logo (optional)">
                         <div className="flex items-center gap-2">
@@ -250,7 +250,7 @@ export default function OfferLetterPage({ onExit, storeKey, onOpenInEditor }) {
                           {o.logoDataUrl && <button onClick={() => set1({ logoDataUrl: "" })} className="text-xs font-semibold text-magenta">remove</button>}
                         </div>
                       </Field>
-                      <Field label="Footer line 1"><Text value={o.footerLine1} onChange={(v) => set1({ footerLine1: v })} placeholder="Mob.: 054 444 1530, Dubai, UAE, Email : ..." /></Field>
+                      <Field label="Footer line 1"><Text value={o.footerLine1} onChange={(v) => set1({ footerLine1: v })} placeholder="Mob.: +000 000 0000, City, Country, Email : ..." /></Field>
                       <Field label="Footer line 2"><Text value={o.footerLine2} onChange={(v) => set1({ footerLine2: v })} placeholder="Dubai-U.A.E" /></Field>
                     </>
                   )}
@@ -290,15 +290,15 @@ export default function OfferLetterPage({ onExit, storeKey, onOpenInEditor }) {
                       {["Mr.", "Ms.", "Mrs.", "Dr."].map((s) => <option key={s}>{s}</option>)}
                     </select>
                   </Field>
-                  <Field label="Full name"><Text value={o.candidateName} onChange={(v) => set1({ candidateName: v })} placeholder="Alaa Naddaf" /></Field>
+                  <Field label="Full name"><Text value={o.candidateName} onChange={(v) => set1({ candidateName: v })} placeholder="John Smith" /></Field>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Nationality"><Text value={o.nationality} onChange={(v) => set1({ nationality: v })} placeholder="Armenian" /></Field>
-                  <Field label="Passport no."><Text value={o.passportNo} onChange={(v) => set1({ passportNo: v })} placeholder="AV0389163" /></Field>
+                  <Field label="Nationality"><Text value={o.nationality} onChange={(v) => set1({ nationality: v })} placeholder="Indian" /></Field>
+                  <Field label="Passport no."><Text value={o.passportNo} onChange={(v) => set1({ passportNo: v })} placeholder="A1234567" /></Field>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Date"><Text type="date" value={o.date} onChange={(v) => set1({ date: v })} /></Field>
-                  <Field label="Reference no."><Text value={o.refNo} onChange={(v) => set1({ refNo: v })} placeholder="LMB/HR/OL/001/2026" /></Field>
+                  <Field label="Reference no."><Text value={o.refNo} onChange={(v) => set1({ refNo: v })} placeholder="HR/OL/001/2026" /></Field>
                 </div>
               </Card>
             )}
@@ -308,8 +308,8 @@ export default function OfferLetterPage({ onExit, storeKey, onOpenInEditor }) {
               <>
                 <Card title="Role">
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Position / profession"><Text value={o.position} onChange={(v) => set1({ position: v })} placeholder="Ladies Hairdresser" /></Field>
-                    <Field label="Reports to"><Text value={o.reportingTo} onChange={(v) => set1({ reportingTo: v })} placeholder="Salon Manager" /></Field>
+                    <Field label="Position / profession"><Text value={o.position} onChange={(v) => set1({ position: v })} placeholder="Sales Executive" /></Field>
+                    <Field label="Reports to"><Text value={o.reportingTo} onChange={(v) => set1({ reportingTo: v })} placeholder="the Manager" /></Field>
                   </div>
                   <Field label="Duties" hint="Appears after 'Your responsibilities shall include …'.">
                     <Area value={o.duties} onChange={(v) => set1({ duties: v })} rows={3} />

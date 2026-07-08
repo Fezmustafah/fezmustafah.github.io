@@ -153,10 +153,10 @@ machine-readable zone (the two < < < lines at the bottom) of this passport image
 Return ONLY JSON in exactly this shape:
 {"salutation":"","candidateName":"","nationality":"","passportNo":"","dob":"","expiry":"","sex":""}
 Rules:
-- candidateName: full name in normal Title Case, given names then surname, e.g. "Alaa Naddaf". No << or codes.
+- candidateName: full name in normal Title Case, given names then surname, e.g. "John Smith". No << or codes.
 - sex: "M" or "F" exactly as printed.
 - salutation: "Mr." if sex is M, otherwise "Ms.".
-- nationality: the English demonym ADJECTIVE (e.g. "Nepali", "Armenian", "Indian", "Filipino"), NOT the 3-letter code.
+- nationality: the English demonym ADJECTIVE (e.g. "Indian", "Filipino", "British"), NOT the 3-letter code.
 - passportNo: exactly as printed in the passport number field.
 - dob and expiry: formatted "DD MMM YYYY" (e.g. "03 Jul 1995").
 - If any field is genuinely unreadable, use an empty string. Never guess or fabricate.`;

@@ -34,19 +34,18 @@ npm run preview    # serve the production build locally
 4. Drag the **margin sliders** (top / bottom / side) until the content sits cleanly inside the
    letterhead — clear of the printed header and footer. Pick the **accent** colour.
    These margins + accent are remembered **per letterhead**, so you only set them once.
-5. Optionally click an **Apply company defaults** button to pre-fill TRN, bank details,
-   and signatory for the two seeded companies.
+5. Optionally pick a **starter preset** (accent + margins + doc type) from `src/config/brandKits.js`.
+   These are neutral presets only — no company data.
 
 Recurring document? Fill it once, then **section 6 — Presets → Save preset**. Next month,
 load the preset, change the number and date, Download.
 
-## Security note — bank / TRN in a public repo
+## No personal / company data in source
 
-`src/config/brandKits.js` ships with real bank account numbers, IBANs, and TRNs for the two
-seeded companies. That is fine for private/local use. **Before pushing this repo to a public
-GitHub**, move those sensitive values out of source and seed them into IndexedDB on first
-launch instead — do not commit them. (Deploying the built `dist/` to Netlify does not expose
-the source, but a public source repo would.)
+This repo is public. **No real names, passport numbers, phone numbers, emails, TRNs or bank
+details are committed** — `brandKits.js` ships neutral presets, and every document field
+(company, candidate, salary, footer) is entered by the user at runtime and stored only on
+their device / account (IndexedDB or their signed-in cloud rows), never in source.
 
 ## Known limits
 
