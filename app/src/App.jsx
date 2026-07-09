@@ -15,6 +15,7 @@ import SignPdf from "./sign/SignPdf.jsx";
 import TrackerPage from "./features/tracker/TrackerPage.jsx";
 import VendorsPage from "./features/vendors/VendorsPage.jsx";
 import OfferLetterPage from "./features/offerletter/OfferLetterPage.jsx";
+import ScannerPage from "./features/scanner/ScannerPage.jsx";
 import { useViewport } from "./editor/useViewport.js";
 import AuthBar from "./auth/AuthBar.jsx";
 import { useAuth } from "./auth/AuthProvider.jsx";
@@ -81,7 +82,7 @@ export default function App() {
   const [stampOpen, setStampOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showTutorial, setShowTutorial] = useState(() => !seenOnboarding());
-  const [mode, setMode] = useState("studio"); // "studio" | "sign" | "tracker" | "offer"
+  const [mode, setMode] = useState("studio"); // "studio" | "sign" | "tracker" | "vendors" | "offer" | "scan"
   const auth = useAuth();
   const storeKey = (auth?.user?.id || "local") + ":" + refreshKey;
   const lh = editor.letterhead;
@@ -150,6 +151,10 @@ export default function App() {
     return <SignPdf onExit={() => setMode("studio")} storeKey={storeKey} signedIn={!!auth?.user} />;
   }
 
+  if (mode === "scan") {
+    return <ScannerPage onExit={() => setMode("studio")} />;
+  }
+
   if (mode === "tracker") {
     return <TrackerPage onExit={() => setMode("studio")} storeKey={storeKey} />;
   }
@@ -182,6 +187,7 @@ export default function App() {
           AuthBar={AuthBar} onAuthChange={() => setRefreshKey((k) => k + 1)}
           onSignup={() => setShowTutorial(true)} onHelp={() => setShowTutorial(true)}
           onSignMode={() => setMode("sign")}
+          onScanMode={() => setMode("scan")}
           onTrackerMode={() => setMode("tracker")}
           onVendorMode={() => setMode("vendors")}
           onOfferMode={() => setMode("offer")}
@@ -220,6 +226,10 @@ export default function App() {
           <button onClick={() => setMode("vendors")} title="Vendor Statements & netting"
             className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
             📒 Vendors
+          </button>
+          <button onClick={() => setMode("scan")} title="Scan & enhance a document"
+            className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
+            📷 Scan
           </button>
           <button onClick={() => setMode("sign")} title="Sign an existing PDF"
             className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
