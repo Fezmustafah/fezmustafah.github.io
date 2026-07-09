@@ -83,6 +83,7 @@ export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [showTutorial, setShowTutorial] = useState(() => !seenOnboarding());
   const [mode, setMode] = useState("studio"); // "studio" | "sign" | "tracker" | "vendors" | "offer" | "scan"
+  const [signSeed, setSignSeed] = useState(null); // PDF handed from Scan & Enhance to Sign-a-PDF
   const auth = useAuth();
   const storeKey = (auth?.user?.id || "local") + ":" + refreshKey;
   const lh = editor.letterhead;
@@ -148,11 +149,11 @@ export default function App() {
   );
 
   if (mode === "sign") {
-    return <SignPdf onExit={() => setMode("studio")} storeKey={storeKey} signedIn={!!auth?.user} />;
+    return <SignPdf onExit={() => { setSignSeed(null); setMode("studio"); }} storeKey={storeKey} signedIn={!!auth?.user} initialPdf={signSeed} />;
   }
 
   if (mode === "scan") {
-    return <ScannerPage onExit={() => setMode("studio")} />;
+    return <ScannerPage onExit={() => setMode("studio")} onSignPdf={(seed) => { setSignSeed(seed); setMode("sign"); }} />;
   }
 
   if (mode === "tracker") {

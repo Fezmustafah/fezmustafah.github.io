@@ -69,6 +69,53 @@ export function warp(src, sw, sh, quad, ow, oh) {
   return out;
 }
 
+// ---- auto-straighten ----
+
+// Rect corners rotated by deg about the centre — feed to warp() to rotate an image.
+export function quadRot(w, h, deg) {
+  const a = (deg * Math.PI) / 180, cos = Math.cos(a), sin = Math.sin(a);
+  const cx = w / 2, cy = h / 2;
+  return [[0, 0], [w, 0], [w, h], [0, h]].map(([x, y]) => [
+    cx + (x - cx) * cos - (y - cy) * sin,
+    cy + (x - cx) * sin + (y - cy) * cos,
+  ]);
+}
+
+// Residual tilt of an already-cropped page (user's corners were a bit off, or
+// the page itself sat crooked): shear-project ink onto rows at candidate
+// angles — text lines make the row profile spiky when aligned. Returns the
+// angle to pass to quadRot() to straighten, or 0 when there is no clear winner
+// (so pages without text lines are never rotated on a guess).
+export function deskewAngle(img, w, h) {
+  const dw = 320, dh = Math.max(8, Math.round((h * dw) / w));
+  const g = downscale((x, y) => {
+    const i = (y * w + x) * 4;
+    return (img[i] * 77 + img[i + 1] * 150 + img[i + 2] * 29) >> 8;
+  }, w, h, dw, dh);
+  const cx = dw / 2, pad = 24;
+  let best = 0, bestScore = -1, zeroScore = 0;
+  for (let a = -5; a <= 5.001; a += 0.25) {
+    const t = Math.tan((a * Math.PI) / 180);
+    const rows = new Float32Array(dh + pad * 2);
+    for (let y = 0; y < dh; y++) {
+      for (let x = 0; x < dw; x++) {
+        const yy = Math.round(y + (x - cx) * t) + pad;
+        if (yy >= 0 && yy < rows.length) rows[yy] += 255 - g[y * dw + x];
+      }
+    }
+    let m = 0;
+    for (const v of rows) m += v;
+    m /= rows.length;
+    let s = 0;
+    for (const v of rows) s += (v - m) * (v - m);
+    if (Math.abs(a) < 0.01) zeroScore = s;
+    if (s > bestScore) { bestScore = s; best = a; }
+  }
+  // the best shear t cancels the content slope (t = -tan(tilt)); quadRot(tilt)
+  // samples along the content, so the correction is -best.
+  return bestScore > zeroScore * 1.03 ? -best : 0;
+}
+
 // ---- filters ----
 
 // In-place separable box blur on a Float32 channel; 2 passes ~ gaussian.

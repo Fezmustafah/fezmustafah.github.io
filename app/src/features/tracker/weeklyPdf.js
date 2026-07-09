@@ -117,9 +117,15 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
   doc.setLineWidth(0.5);
   doc.line(margin, y, w - margin, y);
 
-  // grand totals — push to a fresh page if there isn't room
+  // grand totals — the signature image is 38mm wide and 38*aspect tall (a round
+  // stamp is ~38mm). Reserve its REAL height below the totals so it can never
+  // climb into the GRAND TOTAL box; if totals+signature don't fit, move BOTH
+  // to a fresh page together.
   const t = totals(rows.map((r) => r.order), vatRate);
-  if (y + 48 > bodyBottom) {
+  const sigH = sig && sig.dataUrl ? 38 * (sig.aspect || 0.45) + 1.5 : 0;
+  const sigNeed = 3 + Math.max(sigH + 3, 18); // gap + image (or blank signing space)
+  const lineLimit = useLh ? PAGE.h - (letterhead.marginBottom || 20) - 8 : PAGE.h - 24;
+  if (y + 31 + sigNeed > lineLimit) {
     endPage();
     doc.addPage();
     if (useLh) drawLetterheadBg(doc, letterhead);
@@ -150,7 +156,8 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
   // beneficiary bank details (bottom-left, below the stats line)
   bankBox(doc, T, margin, ty + 12, 104, seller.bank);
 
-  const sigLineY = useLh ? PAGE.h - (letterhead.marginBottom || 20) - 8 : Math.min(ty + 34, PAGE.h - 24);
+  const totalsBottom = ty + 11; // bottom of the GRAND TOTAL box
+  const sigLineY = Math.min(totalsBottom + sigNeed, lineLimit);
   drawSignature(doc, sig, rightX, sigLineY, T);
   if (!useLh) drawFooter(doc, seller, T);
   return doc;

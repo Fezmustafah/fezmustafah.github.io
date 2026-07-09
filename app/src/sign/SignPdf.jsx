@@ -11,7 +11,7 @@ const CHECKER = "repeating-conic-gradient(#d8d4cc 0% 25%, #f4f1ea 0% 50%) 50% / 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const rid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-export default function SignPdf({ onExit, storeKey, signedIn }) {
+export default function SignPdf({ onExit, storeKey, signedIn, initialPdf }) {
   const [doc, setDoc] = useState(null); // { pages, bytes, numPages }
   const [pdfName, setPdfName] = useState("document");
   const [placements, setPlacements] = useState([]);
@@ -26,6 +26,16 @@ export default function SignPdf({ onExit, storeKey, signedIn }) {
   const scrollRef = useRef(null);
 
   useEffect(() => { refreshSigns(); }, [storeKey]);
+
+  // seeded from Scan & Enhance — load the freshly scanned PDF straight away
+  useEffect(() => {
+    if (!initialPdf?.bytes) return;
+    setBusy(true);
+    renderPdf(initialPdf.bytes)
+      .then((out) => { setDoc(out); setPdfName(initialPdf.name || "document"); })
+      .catch(() => setErr("Could not open the scanned PDF."))
+      .finally(() => setBusy(false));
+  }, [initialPdf]);
   async function refreshSigns() {
     try { setSigns(await listSignatures()); } catch { setSigns([]); }
   }

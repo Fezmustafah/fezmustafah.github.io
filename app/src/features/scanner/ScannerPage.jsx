@@ -67,13 +67,14 @@ async function pageFromDataUrl(dataUrl, name) {
 
 const imageDataOf = (c) => c.getContext("2d").getImageData(0, 0, c.width, c.height);
 
-export default function ScannerPage({ onExit }) {
+export default function ScannerPage({ onExit, onSignPdf }) {
   const [pages, setPages] = useState([]);
   const [cur, setCur] = useState(0);
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState("enhance");
   const [strengthUi, setStrengthUi] = useState(1);
   const [strength, setStrength] = useState(1);
+  const [straighten, setStraighten] = useState(true);
   const [fname, setFname] = useState("Scan");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
@@ -133,13 +134,13 @@ export default function ScannerPage({ onExit }) {
   useEffect(() => { const t = setTimeout(() => setStrength(strengthUi), 250); return () => clearTimeout(t); }, [strengthUi]);
 
   // preview: warp once + all modes, cached per page until quad/strength change
-  const stamp = page ? JSON.stringify([page.quad, strength]) : "";
+  const stamp = page ? JSON.stringify([page.quad, strength, straighten]) : "";
   useEffect(() => {
     if (step !== 2 || !page || (page.pv && page.pvStamp === stamp)) return;
     let dead = false;
     setBusy(true);
     const d = imageDataOf(page.canvas);
-    run({ op: "preview", buf: d.data.buffer, w: d.width, h: d.height, quad: page.quad, strength })
+    run({ op: "preview", buf: d.data.buffer, w: d.width, h: d.height, quad: page.quad, strength, straighten })
       .then((r) => !dead && patchPage(page.id, { pv: r, pvStamp: stamp }))
       .catch((e) => !dead && setNote("Preview failed: " + e.message))
       .finally(() => !dead && setBusy(false));
@@ -148,24 +149,38 @@ export default function ScannerPage({ onExit }) {
 
   async function fullPage(p) {
     const d = imageDataOf(p.canvas);
-    const r = await run({ op: "full", buf: d.data.buffer, w: d.width, h: d.height, quad: p.quad, mode, strength });
+    const r = await run({ op: "full", buf: d.data.buffer, w: d.width, h: d.height, quad: p.quad, mode, strength, straighten });
     return toCanvas(r.w, r.h, (ctx) => ctx.putImageData(new ImageData(new Uint8ClampedArray(r.buf), r.w, r.h), 0, 0));
+  }
+
+  async function buildPdfDoc() {
+    let doc = null;
+    for (const p of pages) {
+      const c = await fullPage(p);
+      const wMm = 210, hMm = Math.round(210 * c.height / c.width * 100) / 100;
+      const or = hMm >= wMm ? "portrait" : "landscape";
+      if (!doc) doc = new jsPDF({ unit: "mm", format: [wMm, hMm], orientation: or });
+      else doc.addPage([wMm, hMm], or);
+      doc.addImage(c.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, wMm, hMm);
+    }
+    return doc;
+  }
+
+  async function signPdf() {
+    setBusy(true); setNote("Preparing for signing…");
+    try {
+      const doc = await buildPdfDoc();
+      onSignPdf?.({ bytes: doc.output("arraybuffer"), name: fname || "Scan" });
+      return; // App switches to Sign-a-PDF; no need to clear busy on the way out
+    } catch (e) { setNote("Could not prepare: " + e.message); }
+    setBusy(false);
   }
 
   async function exportAs(fmt) {
     setBusy(true); setNote("Processing " + pages.length + " page" + (pages.length > 1 ? "s" : "") + "…");
     try {
       if (fmt === "pdf") {
-        let doc = null;
-        for (const p of pages) {
-          const c = await fullPage(p);
-          const wMm = 210, hMm = Math.round(210 * c.height / c.width * 100) / 100;
-          const or = hMm >= wMm ? "portrait" : "landscape";
-          if (!doc) doc = new jsPDF({ unit: "mm", format: [wMm, hMm], orientation: or });
-          else doc.addPage([wMm, hMm], or);
-          doc.addImage(c.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, wMm, hMm);
-        }
-        doc.save((fname || "Scan") + ".pdf");
+        (await buildPdfDoc()).save((fname || "Scan") + ".pdf");
       } else {
         for (let i = 0; i < pages.length; i++) {
           const c = await fullPage(pages[i]);
@@ -282,6 +297,10 @@ export default function ScannerPage({ onExit }) {
                 <span className="flex justify-between font-semibold uppercase tracking-wide"><span>Strength</span><span className="tabular-nums text-navy">{strengthUi.toFixed(2)}×</span></span>
                 <input type="range" min="0.5" max="1.5" step="0.05" value={strengthUi} onChange={(e) => setStrengthUi(Number(e.target.value))} className="mt-1 w-full accent-brass" />
               </label>
+              <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate">
+                <input type="checkbox" checked={straighten} onChange={(e) => setStraighten(e.target.checked)} className="accent-brass" />
+                Auto-straighten — fixes a slightly tilted or crooked page
+              </label>
             </div>
           )}
 
@@ -297,6 +316,7 @@ export default function ScannerPage({ onExit }) {
                 <button disabled={busy} onClick={() => exportAs("jpg")} className="rounded-full bg-[#f6f7f9] px-5 py-2.5 text-sm font-semibold ring-1 ring-black/[0.05]">JPG</button>
                 <button disabled={busy} onClick={() => exportAs("png")} className="rounded-full bg-[#f6f7f9] px-5 py-2.5 text-sm font-semibold ring-1 ring-black/[0.05]">PNG</button>
                 <button disabled={busy} onClick={saveAsLetterhead} className="rounded-full border border-brass bg-brass/[0.06] px-5 py-2.5 text-sm font-semibold">💾 Save as letterhead</button>
+                {onSignPdf && <button disabled={busy} onClick={signPdf} className="rounded-full border border-navy bg-navy/[0.04] px-5 py-2.5 text-sm font-semibold">✒ Sign this PDF</button>}
               </div>
               <p className="mt-3 text-[11px] text-slate/70">Exports at high resolution (up to A4 · 300&nbsp;dpi). Current page is used for the letterhead.</p>
             </div>

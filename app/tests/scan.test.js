@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { homography, applyH, outputSize, warp, enhance, enhancePro, lighten, mixMode } from "../src/features/scanner/scan.js";
+import { homography, applyH, outputSize, warp, enhance, enhancePro, lighten, mixMode, deskewAngle, quadRot } from "../src/features/scanner/scan.js";
 
 // synthetic "photo": W x H, background is a shaded gradient (uneven lighting),
 // with a dark ink square glyph — no DOM needed.
@@ -53,6 +53,35 @@ describe("warp", () => {
     // interior pixels essentially unchanged
     expect(Math.abs(px(out, W, 15, 15) - px(img, W, 15, 15))).toBeLessThanOrEqual(3);
     expect(Math.abs(px(out, W, 14, 14) - px(img, W, 14, 14))).toBeLessThanOrEqual(6); // glyph edge
+  });
+});
+
+describe("auto-straighten", () => {
+  it("detects a ~3 degree tilt and quadRot(warp) removes it", () => {
+    const W = 240, H = 240;
+    const img = new Uint8ClampedArray(W * H * 4).fill(255);
+    const s = Math.tan((3 * Math.PI) / 180);
+    // dark 3px "text lines" every 24px, tilted: y = y0 + (x - W/2) * s
+    for (let y0 = 40; y0 < 200; y0 += 24) {
+      for (let x = 20; x < 220; x++) {
+        const y = Math.round(y0 + (x - W / 2) * s);
+        for (let dy = 0; dy < 3; dy++) {
+          const i = ((y + dy) * W + x) * 4;
+          img[i] = img[i + 1] = img[i + 2] = 30;
+        }
+      }
+    }
+    const a = deskewAngle(img, W, H);
+    expect(Math.abs(Math.abs(a) - 3)).toBeLessThan(0.6);
+    const out = warp(img, W, H, quadRot(W, H, a), W, H);
+    // a line's left and right ends must now sit on the same row
+    const firstDark = (x) => { for (let y = 30; y < 210; y++) if (out[(y * W + x) * 4] < 120) return y; return -1; };
+    expect(Math.abs(firstDark(40) - firstDark(200))).toBeLessThanOrEqual(2);
+  });
+
+  it("returns 0 on a blank page (never rotates on a guess)", () => {
+    const img = new Uint8ClampedArray(64 * 64 * 4).fill(230);
+    expect(deskewAngle(img, 64, 64)).toBe(0);
   });
 });
 
