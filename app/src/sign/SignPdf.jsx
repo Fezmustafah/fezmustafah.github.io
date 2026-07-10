@@ -11,7 +11,7 @@ const CHECKER = "repeating-conic-gradient(#d8d4cc 0% 25%, #f4f1ea 0% 50%) 50% / 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const rid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-export default function SignPdf({ onExit, storeKey, signedIn, initialPdf }) {
+export default function SignPdf({ onExit, storeKey, signedIn, initialPdf, onScan }) {
   const [doc, setDoc] = useState(null); // { pages, bytes, numPages }
   const [pdfName, setPdfName] = useState("document");
   const [placements, setPlacements] = useState([]);
@@ -128,13 +128,21 @@ export default function SignPdf({ onExit, storeKey, signedIn, initialPdf }) {
       {/* top bar */}
       <header className="z-20 flex h-14 shrink-0 items-center justify-between border-b border-black/[0.06] bg-white/90 px-3 backdrop-blur sm:px-4">
         <div className="flex items-center gap-2">
-          <button onClick={onExit} className="tap flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold text-slate hover:bg-black/[0.04]">← Studio</button>
-          <span className="hidden font-display text-[15px] font-extrabold tracking-tightest sm:inline">Sign a PDF</span>
+          <button onClick={onExit} className="tap flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold text-slate hover:bg-black/[0.04]">← Home</button>
+          <span className="hidden font-display text-[15px] font-extrabold tracking-tightest sm:inline">Scan &amp; Sign PDF</span>
         </div>
-        <button onClick={doExport} disabled={!doc || exporting}
-          className="tap btn-primary text-sm disabled:opacity-40">
-          {exporting ? "Exporting…" : "Download signed PDF"}
-        </button>
+        <div className="flex items-center gap-2">
+          {onScan && (
+            <button onClick={onScan} title="Scan or enhance a photo/document"
+              className="tap flex items-center gap-1 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] hover:bg-[#eef0f3]">
+              📷 Scan
+            </button>
+          )}
+          <button onClick={doExport} disabled={!doc || exporting}
+            className="tap btn-primary text-sm disabled:opacity-40">
+            {exporting ? "Exporting…" : "Download signed PDF"}
+          </button>
+        </div>
       </header>
 
       {/* signatures strip — portrait cards with name label */}
@@ -170,13 +178,20 @@ export default function SignPdf({ onExit, storeKey, signedIn, initialPdf }) {
       <div ref={scrollRef} onScroll={onScroll} onPointerDown={() => setSelectedId(null)}
         className="smooth-scroll relative flex-1 overflow-auto p-3 sm:p-6">
         {!doc ? (
-          <label className="mx-auto mt-10 flex max-w-md cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-black/15 bg-white/60 p-10 text-center">
-            <span className="grid h-14 w-14 place-items-center rounded-2xl bg-navy text-2xl text-brass">⬆</span>
-            <span className="font-display text-lg font-bold">{busy ? "Opening…" : "Upload a PDF to sign"}</span>
-            <span className="text-sm text-slate">It splits into pages. Drop your sign or stamp anywhere, then download.</span>
-            <input type="file" accept="application/pdf" onChange={onPdf} className="hidden" />
-            <span className="tap btn-primary mt-1 text-sm">Choose PDF</span>
-          </label>
+          <div className="mx-auto mt-10 flex max-w-md flex-col items-center gap-4 text-center">
+            <label className="flex w-full cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-black/15 bg-white/60 p-10">
+              <span className="grid h-14 w-14 place-items-center rounded-2xl bg-navy text-2xl text-brass">⬆</span>
+              <span className="font-display text-lg font-bold">{busy ? "Opening…" : "Open a PDF to sign"}</span>
+              <span className="text-sm text-slate">It splits into pages. Drop your sign or stamp anywhere, then download.</span>
+              <input type="file" accept="application/pdf" onChange={onPdf} className="hidden" />
+              <span className="tap btn-primary mt-1 text-sm">Choose PDF</span>
+            </label>
+            {onScan && (
+              <button onClick={onScan} className="tap flex w-full items-center justify-center gap-2 rounded-2xl border border-brass/40 bg-brass/[0.05] px-4 py-4 text-sm font-semibold text-navy hover:bg-brass/10">
+                📷 Or scan a photo / document first — straighten &amp; enhance, then sign
+              </button>
+            )}
+          </div>
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col items-center gap-5">
             {doc.pages.map((pg, i) => (

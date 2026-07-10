@@ -216,7 +216,7 @@ export default function ScannerPage({ onExit, onSignPdf }) {
     <div className="flex h-screen flex-col bg-[#e9ebef] text-navy">
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-black/[0.06] bg-white/90 px-4 backdrop-blur">
         <div className="flex items-center gap-3">
-          <button onClick={onExit} className="rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold ring-1 ring-black/[0.05] hover:bg-[#eef0f3]">← Studio</button>
+          <button onClick={onExit} className="rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold ring-1 ring-black/[0.05] hover:bg-[#eef0f3]">← Back</button>
           <div className="leading-none">
             <h1 className="font-display text-[15px] font-extrabold">📷 Scan &amp; Enhance</h1>
             <p className="mt-1 text-[11px] text-slate/80">Processed on your device — nothing is uploaded.</p>

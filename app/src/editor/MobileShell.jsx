@@ -11,7 +11,7 @@ export default function MobileShell({
   storeKey,
   onPreview, onDownload, onClear, onAddText, onAddTable, onAddLine, onOpenStamp,
   onLoadTemplate, templates, MarginControls, AccentInput,
-  AuthBar, onAuthChange, onSignup, onHelp, onSignMode, onScanMode, onTrackerMode, onVendorMode, onOfferMode,
+  AuthBar, onAuthChange, onSignup, onHelp, onHome, onSignMode, onScanMode, onTrackerMode, onVendorMode, onOfferMode,
 }) {
   const wrapRef = useRef(null);
   const [scale, setScale] = useState(0.5);
@@ -120,6 +120,7 @@ export default function MobileShell({
               <SheetHeader title="Menu" onClose={close}>
                 <div className="space-y-3">
                   <div className="rounded-lg border border-hairline p-3"><AuthBar onAuthChange={onAuthChange} onSignup={onSignup} /></div>
+                  <button onClick={() => { onHome?.(); close(); }} className="tap w-full rounded-lg bg-[#f6f7f9] px-3 py-2 text-sm font-semibold text-navy ring-1 ring-black/[0.05]">🏠 All tools</button>
                   <button onClick={() => { onDownload(); close(); }} className="tap w-full rounded-lg bg-navy px-3 py-2 text-sm font-semibold text-paper">Download PDF</button>
                   <button onClick={() => { onPreview(); close(); }} className="tap w-full rounded-lg border border-navy px-3 py-2 text-sm text-navy">Preview PDF</button>
                   <button onClick={() => { onOfferMode?.(); close(); }} className="tap w-full rounded-lg border border-brass bg-brass/[0.06] px-3 py-2 text-sm font-semibold text-navy">📝 Employment Offer Letter</button>

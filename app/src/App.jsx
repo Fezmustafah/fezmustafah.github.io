@@ -16,6 +16,8 @@ import TrackerPage from "./features/tracker/TrackerPage.jsx";
 import VendorsPage from "./features/vendors/VendorsPage.jsx";
 import OfferLetterPage from "./features/offerletter/OfferLetterPage.jsx";
 import ScannerPage from "./features/scanner/ScannerPage.jsx";
+import HomePage from "./HomePage.jsx";
+import { Mark } from "./Brand.jsx";
 import { useViewport } from "./editor/useViewport.js";
 import AuthBar from "./auth/AuthBar.jsx";
 import { useAuth } from "./auth/AuthProvider.jsx";
@@ -64,26 +66,14 @@ const I = {
   eye: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>,
 };
 
-function Mark() {
-  return (
-    <svg viewBox="0 0 64 64" className="h-8 w-8">
-      <rect width="64" height="64" rx="14" fill="#11203A" />
-      <rect x="18" y="13" width="28" height="38" rx="3" fill="#F4F1EA" />
-      <rect x="18" y="13" width="28" height="8" rx="3" fill="#A9853F" />
-      <rect x="23" y="28" width="18" height="2.6" rx="1.3" fill="#11203A" />
-      <rect x="23" y="34" width="18" height="2.6" rx="1.3" fill="#11203A" />
-      <rect x="23" y="40" width="11" height="2.6" rx="1.3" fill="#A9853F" />
-    </svg>
-  );
-}
-
 export default function App() {
   const [editor, dispatch] = useEditor();
   const [stampOpen, setStampOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showTutorial, setShowTutorial] = useState(() => !seenOnboarding());
-  const [mode, setMode] = useState("studio"); // "studio" | "sign" | "tracker" | "vendors" | "offer" | "scan"
+  const [mode, setMode] = useState("home"); // "home" | "studio" | "sign" | "tracker" | "vendors" | "offer" | "scan"
   const [signSeed, setSignSeed] = useState(null); // PDF handed from Scan & Enhance to Sign-a-PDF
+  const [scanReturn, setScanReturn] = useState("home"); // where the scanner's Back goes ("home" or "sign")
   const auth = useAuth();
   const storeKey = (auth?.user?.id || "local") + ":" + refreshKey;
   const lh = editor.letterhead;
@@ -148,26 +138,46 @@ export default function App() {
     </label>
   );
 
+  if (mode === "home") {
+    return (
+      <HomePage
+        onOpen={(key) => setMode(key === "pdf" ? "sign" : key)}
+        AuthBar={AuthBar}
+        onAuthChange={() => setRefreshKey((k) => k + 1)}
+        onSignup={() => { setMode("studio"); setShowTutorial(true); }}
+        userName={auth?.user?.user_metadata?.full_name || auth?.user?.user_metadata?.name || ""}
+      />
+    );
+  }
+
   if (mode === "sign") {
-    return <SignPdf onExit={() => { setSignSeed(null); setMode("studio"); }} storeKey={storeKey} signedIn={!!auth?.user} initialPdf={signSeed} />;
+    return (
+      <SignPdf
+        onExit={() => { setSignSeed(null); setMode("home"); }}
+        storeKey={storeKey}
+        signedIn={!!auth?.user}
+        initialPdf={signSeed}
+        onScan={() => { setScanReturn("sign"); setMode("scan"); }}
+      />
+    );
   }
 
   if (mode === "scan") {
-    return <ScannerPage onExit={() => setMode("studio")} onSignPdf={(seed) => { setSignSeed(seed); setMode("sign"); }} />;
+    return <ScannerPage onExit={() => setMode(scanReturn)} onSignPdf={(seed) => { setSignSeed(seed); setMode("sign"); }} />;
   }
 
   if (mode === "tracker") {
-    return <TrackerPage onExit={() => setMode("studio")} storeKey={storeKey} />;
+    return <TrackerPage onExit={() => setMode("home")} storeKey={storeKey} />;
   }
 
   if (mode === "vendors") {
-    return <VendorsPage onExit={() => setMode("studio")} storeKey={storeKey} />;
+    return <VendorsPage onExit={() => setMode("home")} storeKey={storeKey} />;
   }
 
   if (mode === "offer") {
     return (
       <OfferLetterPage
-        onExit={() => setMode("studio")}
+        onExit={() => setMode("home")}
         storeKey={storeKey}
         onOpenInEditor={(payload) => {
           dispatch({ type: "SET_LETTERHEAD", patch: payload.letterhead });
@@ -187,8 +197,9 @@ export default function App() {
           EditorLetterheads={EditorLetterheads} EditorPresets={EditorPresets}
           AuthBar={AuthBar} onAuthChange={() => setRefreshKey((k) => k + 1)}
           onSignup={() => setShowTutorial(true)} onHelp={() => setShowTutorial(true)}
+          onHome={() => setMode("home")}
           onSignMode={() => setMode("sign")}
-          onScanMode={() => setMode("scan")}
+          onScanMode={() => { setScanReturn("home"); setMode("scan"); }}
           onTrackerMode={() => setMode("tracker")}
           onVendorMode={() => setMode("vendors")}
           onOfferMode={() => setMode("offer")}
@@ -216,25 +227,9 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setMode("offer")} title="Employment Offer Letter"
+          <button onClick={() => setMode("home")} title="All tools"
             className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
-            📝 Offer Letter
-          </button>
-          <button onClick={() => setMode("tracker")} title="Daily Invoice Tracker"
-            className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
-            📋 Daily Tracker
-          </button>
-          <button onClick={() => setMode("vendors")} title="Vendor Statements & netting"
-            className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
-            📒 Vendors
-          </button>
-          <button onClick={() => setMode("scan")} title="Scan & enhance a document"
-            className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
-            📷 Scan
-          </button>
-          <button onClick={() => setMode("sign")} title="Sign an existing PDF"
-            className="flex items-center gap-1.5 rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">
-            ✒ Sign a PDF
+            🏠 Home
           </button>
           <button onClick={() => setShowTutorial(true)} title="How it works"
             className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-slate hover:bg-black/[0.04]">

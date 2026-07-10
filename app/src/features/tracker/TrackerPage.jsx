@@ -198,7 +198,7 @@ export default function TrackerPage({ onExit, storeKey }) {
             onClick={onExit}
             className="rounded-full bg-tcream px-3 py-1.5 text-sm font-semibold text-tnavy ring-1 ring-tcreamDark transition hover:bg-tcreamDark/40"
           >
-            ← Studio
+            ← Home
           </button>
           <div className="leading-none">
             <h1 className="text-[15px] font-extrabold tracking-tight text-tnavy">Daily Invoice Tracker</h1>

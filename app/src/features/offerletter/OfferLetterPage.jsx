@@ -170,7 +170,7 @@ export default function OfferLetterPage({ onExit, storeKey, onOpenInEditor }) {
     <div className="flex h-screen flex-col bg-[#e9ebef] text-navy">
       <header className="z-20 flex h-14 shrink-0 items-center justify-between border-b border-black/[0.06] bg-white/90 px-4 backdrop-blur">
         <div className="flex items-center gap-3">
-          <button onClick={onExit} className="rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">← Studio</button>
+          <button onClick={onExit} className="rounded-full bg-[#f6f7f9] px-3 py-1.5 text-sm font-semibold text-navy ring-1 ring-black/[0.05] transition hover:bg-[#eef0f3]">← Home</button>
           <div className="leading-none">
             <h1 className="font-display text-[15px] font-extrabold tracking-tightest text-navy">Employment Offer Letter</h1>
             <p className="mt-1 text-[11px] text-slate/80">Guided · always fits on one page</p>

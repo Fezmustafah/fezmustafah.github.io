@@ -139,7 +139,7 @@ export default function VendorsPage({ onExit, storeKey }) {
     <div className="flex h-screen flex-col bg-[#f3f1ec] text-tnavy">
       <header className="z-20 flex h-14 shrink-0 items-center justify-between border-b border-tcreamDark bg-white px-4">
         <div className="flex items-center gap-3">
-          <button onClick={onExit} className="rounded-full bg-tcream px-3 py-1.5 text-sm font-semibold text-tnavy ring-1 ring-tcreamDark hover:bg-tcreamDark/40">← Studio</button>
+          <button onClick={onExit} className="rounded-full bg-tcream px-3 py-1.5 text-sm font-semibold text-tnavy ring-1 ring-tcreamDark hover:bg-tcreamDark/40">← Home</button>
           <div className="leading-none">
             <h1 className="text-[15px] font-extrabold tracking-tight text-tnavy">Vendor Statements</h1>
             <p className="mt-1 text-[11px] text-slate">two-way netting · one statement per vendor per month</p>
