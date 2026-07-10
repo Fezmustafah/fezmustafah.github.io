@@ -283,11 +283,13 @@ export function totalBox(doc, T, x, y, w, h, label, value, fontPt) {
 
 // Right-aligned signature: optional saved-signature image above a line with
 // "Authorized Signatory" beneath. rightX = right edge of the block.
-export function drawSignature(doc, sig, rightX, lineY, T) {
+export function drawSignature(doc, sig, rightX, lineY, T, maxH) {
   const c = T.c;
   if (sig && sig.dataUrl) {
-    const wmm = 38;
-    const hmm = wmm * (sig.aspect || 0.45);
+    const aspect = sig.aspect || 0.45;
+    // maxH (mm) shrinks the image into tight space (weekly statement one-pager)
+    const wmm = Math.min(38, (maxH || 38 * aspect) / aspect);
+    const hmm = wmm * aspect;
     try {
       doc.addImage(sig.dataUrl, "PNG", rightX - wmm, lineY - hmm - 1.5, wmm, hmm);
     } catch {

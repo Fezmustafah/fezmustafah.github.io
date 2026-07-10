@@ -117,15 +117,15 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
   doc.setLineWidth(0.5);
   doc.line(margin, y, w - margin, y);
 
-  // grand totals — the signature image is 38mm wide and 38*aspect tall (a round
-  // stamp is ~38mm). Reserve its REAL height below the totals so it can never
-  // climb into the GRAND TOTAL box; if totals+signature don't fit, move BOTH
-  // to a fresh page together.
+  // grand totals + signature stay on THIS page (statement is a one-pager).
+  // The stamp/signature image shrinks into whatever space is left below the
+  // GRAND TOTAL (never overlapping it), and the bank box is dropped when it
+  // can't fit — the SoA-pack invoices still carry bank + sign in full.
   const t = totals(rows.map((r) => r.order), vatRate);
-  const sigH = sig && sig.dataUrl ? 38 * (sig.aspect || 0.45) + 1.5 : 0;
-  const sigNeed = 3 + Math.max(sigH + 3, 18); // gap + image (or blank signing space)
+  const aspect = sig && sig.dataUrl ? sig.aspect || 0.45 : 0;
   const lineLimit = useLh ? PAGE.h - (letterhead.marginBottom || 20) - 8 : PAGE.h - 24;
-  if (y + 31 + sigNeed > lineLimit) {
+  const minNeed = 31 + (aspect ? 22 * aspect + 9 : 18); // totals + smallest usable signature
+  if (y + minNeed > lineLimit) {
     endPage();
     doc.addPage();
     if (useLh) drawLetterheadBg(doc, letterhead);
@@ -153,12 +153,22 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
     ty + 6,
   );
 
-  // beneficiary bank details (bottom-left, below the stats line)
-  bankBox(doc, T, margin, ty + 12, 104, seller.bank);
-
   const totalsBottom = ty + 11; // bottom of the GRAND TOTAL box
-  const sigLineY = Math.min(totalsBottom + sigNeed, lineLimit);
-  drawSignature(doc, sig, rightX, sigLineY, T);
+
+  // signature (right column) — shrinks into the space left on this page
+  const avail = lineLimit - totalsBottom - 6;
+  const sigH = aspect ? Math.min(38 * aspect, avail) : 0;
+  const sigLineY = aspect ? totalsBottom + 6 + sigH : Math.min(totalsBottom + 24, lineLimit);
+  drawSignature(doc, sig, rightX, sigLineY, T, sigH || undefined);
+
+  // beneficiary bank details (left column) — first thing to go when tight;
+  // the SoA-pack invoices still print them in full
+  const bank = seller.bank || {};
+  const bankRows = ["bankName", "accountName", "accountNo", "iban", "swift"]
+    .filter((k) => String(bank[k] || "").trim()).length;
+  if (bankRows && ty + 12 + 10 + bankRows * 4.4 <= lineLimit + 4) {
+    bankBox(doc, T, margin, ty + 12, 104, bank);
+  }
   if (!useLh) drawFooter(doc, seller, T);
   return doc;
 }
