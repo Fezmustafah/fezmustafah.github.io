@@ -117,21 +117,26 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
   doc.setLineWidth(0.5);
   doc.line(margin, y, w - margin, y);
 
-  // grand totals + signature stay on THIS page (statement is a one-pager).
-  // The stamp/signature image shrinks into whatever space is left below the
-  // GRAND TOTAL (never overlapping it), and the bank box is dropped when it
-  // can't fit — the SoA-pack invoices still carry bank + sign in full.
+  // Bottom block. The statement is a ONE-pager: two layouts, tried in order.
+  //   roomy — bank box left, signature under the totals (image shrinks to fit)
+  //   tight — bank box DROPPED (user rule; the SoA-pack invoices still carry
+  //           it) and the signature moves to the LEFT column level with the
+  //           totals, stats line beneath both.
+  // A fresh page only when even the tight layout can't fit below the table.
   const t = totals(rows.map((r) => r.order), vatRate);
   const aspect = sig && sig.dataUrl ? sig.aspect || 0.45 : 0;
   const lineLimit = useLh ? PAGE.h - (letterhead.marginBottom || 20) - 8 : PAGE.h - 24;
-  const minNeed = 31 + (aspect ? 22 * aspect + 9 : 18); // totals + smallest usable signature
-  if (y + minNeed > lineLimit) {
+  const roomyNeed = 37 + (aspect ? Math.min(38, 22) * aspect + 9 : 18);
+  const tightNeed = Math.max(31, 3 + (aspect ? 16 * aspect : 0) + 12) + 9;
+  if (y + tightNeed > lineLimit) {
     endPage();
     doc.addPage();
     if (useLh) drawLetterheadBg(doc, letterhead);
     else drawHeader(doc, seller, T);
     y = contTop;
   }
+  const tight = y + roomyNeed > lineLimit;
+
   let ty = y + 10;
   ink(doc, c.text);
   doc.setFont(T.font.body, "normal").setFontSize(9.5);
@@ -142,32 +147,35 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
   doc.text(`AED ${money(t.vat)}`, rightX, ty, { align: "right" });
   ty += 4;
   totalBox(doc, T, rightX - 80, ty, 80, 11, "GRAND TOTAL", `AED ${money(t.total)}`, 12);
-
-  // stats line (left)
-  const days = new Set(rows.map((r) => r.date)).size;
-  ink(doc, T.minimal ? c.muted : c.primary);
-  doc.setFont(T.font.body, "bold").setFontSize(8.5);
-  doc.text(
-    `Total Parcels: ${t.qty}    |    Total Invoices: ${rows.length}    |    Days: ${days}`,
-    margin,
-    ty + 6,
-  );
-
   const totalsBottom = ty + 11; // bottom of the GRAND TOTAL box
 
-  // signature (right column) — shrinks into the space left on this page
-  const avail = lineLimit - totalsBottom - 6;
-  const sigH = aspect ? Math.min(38 * aspect, avail) : 0;
-  const sigLineY = aspect ? totalsBottom + 6 + sigH : Math.min(totalsBottom + 24, lineLimit);
-  drawSignature(doc, sig, rightX, sigLineY, T, sigH || undefined);
+  const days = new Set(rows.map((r) => r.date)).size;
+  const statsText = `Total Parcels: ${t.qty}    |    Total Invoices: ${rows.length}    |    Days: ${days}`;
+  const statsLine = (sy) => {
+    ink(doc, T.minimal ? c.muted : c.primary);
+    doc.setFont(T.font.body, "bold").setFontSize(8.5);
+    doc.text(statsText, margin, sy);
+  };
 
-  // beneficiary bank details (left column) — first thing to go when tight;
-  // the SoA-pack invoices still print them in full
-  const bank = seller.bank || {};
-  const bankRows = ["bankName", "accountName", "accountNo", "iban", "swift"]
-    .filter((k) => String(bank[k] || "").trim()).length;
-  if (bankRows && ty + 12 + 10 + bankRows * 4.4 <= lineLimit + 4) {
-    bankBox(doc, T, margin, ty + 12, 104, bank);
+  if (tight) {
+    // signature left, level with the totals; stats drop beneath both
+    const sigH = aspect ? Math.min(38 * aspect, totalsBottom - y - 3, lineLimit - y - 15) : 0;
+    const lineY = Math.max(y + 3 + (sigH || 18), totalsBottom);
+    drawSignature(doc, sig, margin + 55, Math.min(lineY, lineLimit - 9), T, sigH || undefined);
+    statsLine(Math.min(Math.max(lineY, totalsBottom) + 9, lineLimit + 2));
+  } else {
+    statsLine(ty + 6);
+    // signature (right column) shrinks into the space left on this page
+    const avail = lineLimit - totalsBottom - 6;
+    const sigH = aspect ? Math.min(38 * aspect, avail) : 0;
+    const sigLineY = aspect ? totalsBottom + 6 + sigH : Math.min(totalsBottom + 24, lineLimit);
+    drawSignature(doc, sig, rightX, sigLineY, T, sigH || undefined);
+    const bank = seller.bank || {};
+    const bankRows = ["bankName", "accountName", "accountNo", "iban", "swift"]
+      .filter((k) => String(bank[k] || "").trim()).length;
+    if (bankRows && ty + 12 + 10 + bankRows * 4.4 <= lineLimit + 4) {
+      bankBox(doc, T, margin, ty + 12, 104, bank);
+    }
   }
   if (!useLh) drawFooter(doc, seller, T);
   return doc;
