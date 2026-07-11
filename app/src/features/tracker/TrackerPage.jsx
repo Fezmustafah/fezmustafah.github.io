@@ -151,6 +151,41 @@ export default function TrackerPage({ onExit, storeKey }) {
     commitOrders(next, nextMeta);
   }
 
+  // Edit an invoice after creation: rename location, change lines, or move it
+  // to another date (re-filed under the new day, so its number follows).
+  function updateOrder(oldDate, id, { date: newDate, location, lines }) {
+    const src = orders[oldDate] || [];
+    const existing = src.find((o) => o.id === id);
+    if (!existing) return;
+    const norm = lines.map((l) => {
+      const qty = Number(l.qty) || 0;
+      const unitPrice = Number(l.unitPrice) || 0;
+      return { item: l.item, qty, unitPrice, amount: qty * unitPrice };
+    });
+    const updated = {
+      ...existing,
+      location,
+      lines: norm,
+      qty: norm.reduce((s, l) => s + l.qty, 0),
+      amount: norm.reduce((s, l) => s + l.amount, 0),
+    };
+    const d = newDate || oldDate;
+    const next = { ...orders };
+    if (d === oldDate) {
+      next[oldDate] = src.map((o) => (o.id === id ? updated : o));
+    } else {
+      const rest = src.filter((o) => o.id !== id);
+      if (rest.length) next[oldDate] = rest;
+      else delete next[oldDate];
+      next[d] = [...(next[d] || []), updated];
+    }
+    const earliest = Object.keys(next).sort()[0];
+    const nextMeta = earliest && (!meta.trackingStart || earliest < meta.trackingStart)
+      ? { ...meta, trackingStart: earliest }
+      : null;
+    commitOrders(next, nextMeta);
+  }
+
   function removeOrder(d, id) {
     const dayList = (orders[d] || []).filter((o) => o.id !== id);
     const next = { ...orders };
@@ -238,7 +273,7 @@ export default function TrackerPage({ onExit, storeKey }) {
             <DailyTab
               date={date} setDate={setDate}
               dayOrders={dayOrders} settings={settings}
-              onAdd={addOrder} onRemove={removeOrder}
+              onAdd={addOrder} onRemove={removeOrder} onUpdate={updateOrder}
               signatures={signatures} activeSig={activeSig} activeSigId={activeSigId} onPickSig={setActiveSigId}
               letterhead={activeLetterhead}
             />
@@ -247,7 +282,7 @@ export default function TrackerPage({ onExit, storeKey }) {
             <WeeklyTab
               rows={rows} settings={settings}
               periodStart={periodStart} periodEnd={periodEnd}
-              onClearWeek={clearWeek}
+              onClearWeek={clearWeek} onRemove={removeOrder} onUpdate={updateOrder}
               signatures={signatures} activeSig={activeSig} activeSigId={activeSigId} onPickSig={setActiveSigId}
               letterhead={activeLetterhead}
             />

@@ -4,12 +4,14 @@ import { useState } from "react";
 import { downloadInvoice } from "./invoicePdf.js";
 import { money, dateLong, invoiceNo, totals, orderLines } from "./format.js";
 import SignatureStrip from "./SignatureStrip.jsx";
+import EditInvoice from "./EditInvoice.jsx";
 
 export default function DailyTab({
   date, setDate, dayOrders, settings,
-  onAdd, onRemove, signatures, activeSig, activeSigId, onPickSig, letterhead,
+  onAdd, onRemove, onUpdate, signatures, activeSig, activeSigId, onPickSig, letterhead,
 }) {
   const [location, setLocation] = useState("");
+  const [editing, setEditing] = useState(null); // {date, index, order}
   const [qty, setQty] = useState("");
   const [itemIdx, setItemIdx] = useState(0);
   const [lines, setLines] = useState([]); // pending lines for the invoice being built
@@ -175,6 +177,13 @@ export default function DailyTab({
                     📄
                   </button>
                   <button
+                    onClick={() => setEditing({ date, index: i, order: o })}
+                    title="Edit invoice"
+                    className="shrink-0 rounded-lg border border-tcreamDark px-2.5 py-1.5 text-sm hover:border-tgold hover:bg-tcream"
+                  >
+                    ✎
+                  </button>
+                  <button
                     onClick={() => onRemove(date, o.id)}
                     title="Remove"
                     className="shrink-0 rounded-lg px-2 py-1.5 text-lg font-bold text-[#C0392B] hover:bg-red-50"
@@ -212,6 +221,14 @@ export default function DailyTab({
             Download All Daily Invoices ({dayOrders.length})
           </button>
         </>
+      )}
+
+      {editing && (
+        <EditInvoice
+          row={editing} settings={settings}
+          onSave={onUpdate} onDelete={onRemove}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   );

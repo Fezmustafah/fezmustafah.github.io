@@ -4,11 +4,13 @@ import { downloadWeekly } from "./weeklyPdf.js";
 import { downloadStatementPack } from "./statementPack.js";
 import { money, dateShort, invoiceNo, totals } from "./format.js";
 import SignatureStrip from "./SignatureStrip.jsx";
+import EditInvoice from "./EditInvoice.jsx";
 
 export default function WeeklyTab({
-  rows, settings, onClearWeek, periodStart, periodEnd,
+  rows, settings, onClearWeek, onRemove, onUpdate, periodStart, periodEnd,
   signatures, activeSig, activeSigId, onPickSig, letterhead,
 }) {
+  const [editing, setEditing] = useState(null); // {date, index, order}
   const t = totals(rows.map((r) => r.order), settings.vatRate);
   const days = new Set(rows.map((r) => r.date)).size;
 
@@ -87,6 +89,7 @@ export default function WeeklyTab({
               <th className="px-3 py-2.5 font-semibold">Location</th>
               <th className="px-3 py-2.5 text-right font-semibold">Qty</th>
               <th className="px-3 py-2.5 text-right font-semibold">Amount (AED)</th>
+              <th className="px-2 py-2.5" aria-label="Edit" />
             </tr>
           </thead>
           <tbody>
@@ -98,6 +101,15 @@ export default function WeeklyTab({
                 <td className="px-3 py-2 text-tnavy">{r.order.location}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{r.order.qty}</td>
                 <td className="px-3 py-2 text-right font-semibold tabular-nums text-tnavy">{money(r.order.amount)}</td>
+                <td className="px-2 py-2 text-center">
+                  <button
+                    onClick={() => setEditing(r)}
+                    title="Edit invoice — location, items, date, or delete"
+                    className="rounded-md px-1.5 py-1 text-sm text-slate transition hover:bg-tgold/20 hover:text-tnavy"
+                  >
+                    ✎
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -106,14 +118,17 @@ export default function WeeklyTab({
               <td colSpan={4} className="px-3 py-2.5 text-right text-xs font-semibold uppercase text-slate">Subtotal</td>
               <td className="px-3 py-2.5 text-right tabular-nums">{t.qty}</td>
               <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-tnavy">{money(t.subtotal)}</td>
+              <td />
             </tr>
             <tr className="bg-tcream">
               <td colSpan={5} className="px-3 py-1.5 text-right text-xs font-semibold uppercase text-slate">VAT ({settings.vatRate}%)</td>
               <td className="px-3 py-1.5 text-right tabular-nums text-tnavy">{money(t.vat)}</td>
+              <td />
             </tr>
             <tr className="bg-tnavy text-white">
               <td colSpan={5} className="px-3 py-2.5 text-right text-sm font-bold uppercase">Grand Total</td>
               <td className="px-3 py-2.5 text-right text-sm font-bold tabular-nums text-tgold">AED {money(t.total)}</td>
+              <td className="bg-tnavy" />
             </tr>
           </tfoot>
         </table>
@@ -151,6 +166,14 @@ export default function WeeklyTab({
         <b className="text-tnavy">SoA + All Invoices</b> = the statement above followed by a signed tax invoice for
         every line, in one PDF the buyer can verify without asking for each invoice.
       </p>
+
+      {editing && (
+        <EditInvoice
+          row={editing} settings={settings}
+          onSave={onUpdate} onDelete={onRemove}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }
