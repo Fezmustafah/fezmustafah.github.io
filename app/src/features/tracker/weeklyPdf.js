@@ -89,20 +89,71 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
   partyBox(doc, T, margin, boxY, boxW, "FROM (SELLER)", sellerLines, bodyH);
   partyBox(doc, T, rightBoxX, boxY, boxW, "BILL TO (BUYER)", buyerLines, bodyH);
 
-  let y = tableHead(doc, T, boxY + PARTY_HEADER_H + bodyH + 6);
+  // ---- bottom-block space needs, computed BEFORE the table so pagination can
+  // guarantee totals + signature always sit WITH table rows (never alone) -----
+  const t = totals(rows.map((r) => r.order), vatRate);
+  const aspect = sig && sig.dataUrl ? sig.aspect || 0.45 : 0;
+  const lineLimit = useLh ? PAGE.h - (letterhead.marginBottom || 20) - 8 : PAGE.h - 24;
+  const roomyNeed = 37 + (aspect ? Math.min(38, 22) * aspect + 9 : 18);
+  const tightNeed = Math.max(31, 3 + (aspect ? 16 * aspect : 0) + 12) + 9;
 
+  // ---- pagination plan (user rules, priority order):
+  //   1. ONE page whenever possible — row height compresses before giving up;
+  //      the tight layout (bank box dropped) counts as fitting.
+  //   2. Else split rows EVENLY so the last page always carries table rows +
+  //      totals + signature together — a page with only the totals block is
+  //      never produced.
+  const HEAD_H = 8;
+  const tableTop = boxY + PARTY_HEADER_H + bodyH + 6;
+  const firstRowsY = tableTop + HEAD_H;
+  const contRowsY = contTop + HEAD_H;
+  const lastCap = (startY, rh) => Math.max(0, Math.floor((lineLimit - tightNeed - startY) / rh));
+  const fullCap = (startY, rh) => Math.max(1, Math.floor((bodyBottom - startY) / rh));
+
+  let rowH = ROW_H;
+  let plan = null; // row count per page
+  for (const rh of [ROW_H, 6.2, 5.6]) {
+    if (rows.length <= lastCap(firstRowsY, rh)) {
+      rowH = rh;
+      plan = [rows.length];
+      break;
+    }
+  }
+  if (!plan) {
+    plan = [];
+    let left = rows.length;
+    let startY = firstRowsY;
+    while (left > 0) {
+      if (left <= lastCap(startY, rowH)) {
+        plan.push(left);
+        break;
+      }
+      const full = fullCap(startY, rowH);
+      const take = left <= full + lastCap(contRowsY, rowH)
+        ? Math.max(1, Math.min(full, Math.ceil(left / 2))) // final break: balance both pages
+        : full;
+      plan.push(take);
+      left -= take;
+      startY = contRowsY;
+    }
+  }
+
+  let y = tableHead(doc, T, tableTop);
+  let page = 0;
+  let used = 0;
   rows.forEach((r, i) => {
-    // page break before a row that wouldn't fit
-    if (y + ROW_H > bodyBottom) {
+    if (used >= plan[page]) {
+      page += 1;
+      used = 0;
       y = startContPage();
     }
     if (i % 2 === 1) {
       fill(doc, c.panel);
-      doc.rect(margin, y, w - margin * 2, ROW_H, "F");
+      doc.rect(margin, y, w - margin * 2, rowH, "F");
     }
     ink(doc, c.text);
-    doc.setFont(T.font.body, "normal").setFontSize(8);
-    const by = y + 4.8;
+    doc.setFont(T.font.body, "normal").setFontSize(rowH < ROW_H ? 7.4 : 8);
+    const by = y + rowH * 0.68;
     doc.text(String(i + 1), COLS.num, by, { align: "center" });
     doc.text(invoiceNo(r.date, r.index), COLS.inv, by);
     doc.text(dateShort(r.date), COLS.date, by);
@@ -110,31 +161,19 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
     doc.text(loc, COLS.loc, by);
     doc.text(String(r.order.qty), COLS.qtyR, by, { align: "right" });
     doc.text(money(r.order.amount), COLS.amtR, by, { align: "right" });
-    y += ROW_H;
+    y += rowH;
+    used += 1;
   });
 
   stroke(doc, T.minimal ? c.muted : c.primary);
   doc.setLineWidth(0.5);
   doc.line(margin, y, w - margin, y);
 
-  // Bottom block. The statement is a ONE-pager: two layouts, tried in order.
+  // Bottom block layouts (the plan above guarantees one fits under the rows):
   //   roomy — bank box left, signature under the totals (image shrinks to fit)
-  //   tight — bank box DROPPED (user rule; the SoA-pack invoices still carry
-  //           it) and the signature moves to the LEFT column level with the
-  //           totals, stats line beneath both.
-  // A fresh page only when even the tight layout can't fit below the table.
-  const t = totals(rows.map((r) => r.order), vatRate);
-  const aspect = sig && sig.dataUrl ? sig.aspect || 0.45 : 0;
-  const lineLimit = useLh ? PAGE.h - (letterhead.marginBottom || 20) - 8 : PAGE.h - 24;
-  const roomyNeed = 37 + (aspect ? Math.min(38, 22) * aspect + 9 : 18);
-  const tightNeed = Math.max(31, 3 + (aspect ? 16 * aspect : 0) + 12) + 9;
-  if (y + tightNeed > lineLimit) {
-    endPage();
-    doc.addPage();
-    if (useLh) drawLetterheadBg(doc, letterhead);
-    else drawHeader(doc, seller, T);
-    y = contTop;
-  }
+  //   tight — bank box DROPPED (user rule: no space -> no bank info; the
+  //           SoA-pack invoices still carry it) and the signature moves to the
+  //           LEFT column level with the totals, stats line beneath both.
   const tight = y + roomyNeed > lineLimit;
 
   let ty = y + 10;
