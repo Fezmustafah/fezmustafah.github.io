@@ -25,7 +25,7 @@ function tableHead(doc, T, y) {
   ]);
 }
 
-export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, letterhead, doc: sharedDoc }) {
+export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, letterhead, title, doc: sharedDoc }) {
   const { seller, buyer, vatRate } = settings;
   const T = resolveTheme(settings, letterhead);
   const c = T.c;
@@ -53,12 +53,15 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
     drawHeader(doc, seller, T);
     titleY = 42;
   }
-  drawTitle(doc, "WEEKLY STATEMENT", titleY, T);
+  // title follows the chosen billing cycle (daily / weekly / monthly / custom)
+  drawTitle(doc, title || "WEEKLY STATEMENT", titleY, T);
 
   // period line — follows the title alignment (center, or left for graphite)
   ink(doc, c.text);
   doc.setFont(T.font.body, "normal").setFontSize(9.5);
-  const periodText = `Period: ${dateShort(periodStart)} — ${dateShort(periodEnd)}`;
+  const periodText = periodStart === periodEnd
+    ? `Date: ${dateShort(periodStart)}`
+    : `Period: ${dateShort(periodStart)} — ${dateShort(periodEnd)}`;
   if (T.layout && T.layout.title === "left") doc.text(periodText, margin, titleY + 8);
   else doc.text(periodText, w / 2, titleY + 8, { align: "center" });
 
@@ -220,10 +223,20 @@ export function buildWeekly({ rows, settings, periodStart, periodEnd, sig, lette
   return doc;
 }
 
+// file name follows the statement kind, e.g. BAM-Monthly-Statement-20260701-20260731.pdf
+export function statementFileName(title, periodStart, periodEnd) {
+  const slug = (title || "WEEKLY STATEMENT")
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join("-");
+  const start = periodStart.replace(/-/g, "");
+  const end = periodEnd.replace(/-/g, "");
+  return start === end ? `BAM-${slug}-${start}.pdf` : `BAM-${slug}-${start}-${end}.pdf`;
+}
+
 export function downloadWeekly(args) {
   const doc = buildWeekly(args);
-  const start = args.periodStart.replace(/-/g, "");
-  const end = args.periodEnd.replace(/-/g, "");
-  doc.save(`BAM-Weekly-Statement-${start}-${end}.pdf`);
+  doc.save(statementFileName(args.title, args.periodStart, args.periodEnd));
   return { fileName: dateLong(args.periodStart) };
 }

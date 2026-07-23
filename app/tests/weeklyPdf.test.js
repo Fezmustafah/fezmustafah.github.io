@@ -6,7 +6,7 @@
 //   3. Bank box appears only when the roomy layout fits (user rule: no space
 //      -> no bank info).
 import { describe, it, expect } from "vitest";
-import { buildWeekly } from "../src/features/tracker/weeklyPdf.js";
+import { buildWeekly, statementFileName } from "../src/features/tracker/weeklyPdf.js";
 import { newDoc } from "../src/features/tracker/pdfShared.js";
 
 const TINY_PNG =
@@ -52,7 +52,7 @@ const makeRows = (n) =>
   }));
 
 // build on an instrumented doc: record every text() call with its page number
-function render(n) {
+function render(n, extra = {}) {
   const doc = newDoc();
   const calls = [];
   const origText = doc.text.bind(doc);
@@ -72,6 +72,7 @@ function render(n) {
     sig: null,
     letterhead,
     doc,
+    ...extra,
   });
   return {
     pages: doc.getNumberOfPages(),
@@ -83,6 +84,37 @@ function render(n) {
     rowTextsOn: (p) => calls.filter((c) => c.page === p && /^BAM-\d{8}-\d{2}$/.test(c.str)).length,
   };
 }
+
+describe("statement period (daily / weekly / monthly / custom)", () => {
+  const strs = (r) => r.calls.map((c) => c.str);
+
+  it("defaults to the weekly title and a period range", () => {
+    const r = render(5);
+    expect(strs(r)).toContain("WEEKLY STATEMENT");
+    expect(strs(r)).toContain("Period: 12 Jul 2026 — 18 Jul 2026");
+  });
+
+  it("prints the chosen cycle's title", () => {
+    const r = render(5, { title: "MONTHLY STATEMENT", periodStart: "2026-07-01", periodEnd: "2026-07-31" });
+    expect(strs(r)).toContain("MONTHLY STATEMENT");
+    expect(strs(r)).toContain("Period: 01 Jul 2026 — 31 Jul 2026");
+  });
+
+  it("a one-day period prints a single date, not a range", () => {
+    const r = render(2, { title: "DAILY STATEMENT", periodStart: "2026-07-14", periodEnd: "2026-07-14" });
+    expect(strs(r)).toContain("DAILY STATEMENT");
+    expect(strs(r)).toContain("Date: 14 Jul 2026");
+  });
+
+  it("names the file after the cycle", () => {
+    expect(statementFileName("MONTHLY STATEMENT", "2026-07-01", "2026-07-31"))
+      .toBe("BAM-Monthly-Statement-20260701-20260731.pdf");
+    expect(statementFileName("DAILY STATEMENT", "2026-07-14", "2026-07-14"))
+      .toBe("BAM-Daily-Statement-20260714.pdf");
+    expect(statementFileName(undefined, "2026-07-12", "2026-07-18"))
+      .toBe("BAM-Weekly-Statement-20260712-20260718.pdf");
+  });
+});
 
 describe("weekly statement pagination", () => {
   it("small statement: one page, roomy, bank box present", () => {

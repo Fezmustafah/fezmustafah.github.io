@@ -5,21 +5,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   loadTracker, setOrders as persistOrders, clearOrders,
-  saveSettings as persistSettings, setMeta as persistMeta,
+  saveSettings as persistSettings, setMeta as persistMeta, setTrash as persistTrash,
   isCloudActive, subscribeTracker,
 } from "./trackerStorage.js";
 import { DEFAULT_SETTINGS } from "./constants.js";
 import { listSignatures, listLetterheads } from "../../lib/storage.js";
-import { todayIso, addDays, daysBetween, dateLong } from "./format.js";
+import { todayIso, daysBetween, dateLong } from "./format.js";
+import { isPeriodMode, periodRange, periodDue, periodLength, rangeLabel } from "./period.js";
 import DailyTab from "./DailyTab.jsx";
 import WeeklyTab from "./WeeklyTab.jsx";
+import TrashTab from "./TrashTab.jsx";
 import SettingsTab from "./SettingsTab.jsx";
 
-const TABS = [
-  { id: "daily", label: "Daily" },
-  { id: "weekly", label: "Weekly Summary" },
-  { id: "settings", label: "Settings" },
-];
+const TRASH_CAP = 500; // keep the recycle bin bounded (it syncs to the cloud)
 
 export default function TrackerPage({ onExit, storeKey }) {
   const [tab, setTab] = useState("daily");
@@ -27,6 +25,7 @@ export default function TrackerPage({ onExit, storeKey }) {
   const [orders, setOrders] = useState({});
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [meta, setMeta] = useState({});
+  const [trash, setTrash] = useState([]);
   const [signatures, setSignatures] = useState([]);
   const [letterheads, setLetterheads] = useState([]);
   const [activeSigId, setActiveSigId] = useState(null);
@@ -38,10 +37,11 @@ export default function TrackerPage({ onExit, storeKey }) {
   // load orders/settings/meta from the active backend (cloud merges in local).
   const load = useCallback(async (showSpinner = true) => {
     if (showSpinner) setLoaded(false);
-    const { orders, settings, meta } = await loadTracker();
+    const { orders, settings, meta, trash } = await loadTracker();
     setOrders(orders);
     setSettings(settings);
     setMeta(meta);
+    setTrash(trash || []);
     setLoaded(true);
   }, []);
 
@@ -96,26 +96,40 @@ export default function TrackerPage({ onExit, storeKey }) {
       .flatMap((d) => (orders[d] || []).map((order, index) => ({ date: d, index, order })));
   }, [orders]);
 
-  // period start = the earliest of the tracking anchor and the first invoice
-  // date (so back-dated entries pull the start back); the period always spans a
-  // full 7-day billing week from there.
-  const periodStart = [meta.trackingStart, rows[0]?.date].filter(Boolean).sort()[0] || todayIso();
-  const periodEnd = addDays(periodStart, 6);
+  // anchor = the earliest of the tracking anchor and the first invoice date (so
+  // back-dated entries pull it back). Weekly periods are measured from here.
+  const anchor = [meta.trackingStart, rows[0]?.date].filter(Boolean).sort()[0] || todayIso();
+  const firstDate = rows[0]?.date || todayIso();
+  const lastDate = rows[rows.length - 1]?.date || todayIso();
 
-  // weekly reminder: statement is due one full week (7 days) after the start.
+  // Which billing cycle the statement follows: daily / weekly / monthly /
+  // custom / all. Stored in meta so it syncs with the account.
+  const mode = isPeriodMode(meta.periodMode) ? meta.periodMode : "weekly";
+
+  // reminder: the statement for the CURRENT cycle is due the day after it ends.
   const reminder = useMemo(() => {
-    if (!rows.length) return null;
-    const due = addDays(periodStart, 7);
-    const elapsed = daysBetween(periodStart, todayIso());
-    return { due, elapsed, overdue: todayIso() >= due };
-  }, [rows.length, periodStart]);
+    if (!rows.length || mode === "custom" || mode === "all") return null;
+    const range = periodRange(mode, todayIso(), { anchor, first: firstDate, last: lastDate });
+    const due = periodDue(range);
+    return {
+      due,
+      label: rangeLabel(range),
+      day: daysBetween(range.start, todayIso()) + 1,
+      length: periodLength(range),
+      overdue: todayIso() >= due,
+    };
+  }, [rows.length, mode, anchor, firstDate, lastDate]);
 
   // ---- mutations -----------------------------------------------------------
-  async function commitOrders(next, nextMeta) {
+  async function commitOrders(next, nextMeta, nextTrash) {
     writing.current = true;
     setOrders(next);
     try {
       await persistOrders(next);
+      if (nextTrash) {
+        setTrash(nextTrash);
+        await persistTrash(nextTrash);
+      }
       if (nextMeta) {
         setMeta(nextMeta);
         await persistMeta(nextMeta);
@@ -125,6 +139,26 @@ export default function TrackerPage({ onExit, storeKey }) {
       setTimeout(() => { writing.current = false; }, 1500);
     }
   }
+
+  async function commitMeta(nextMeta) {
+    writing.current = true;
+    setMeta(nextMeta);
+    try { await persistMeta(nextMeta); }
+    finally { setTimeout(() => { writing.current = false; }, 1500); }
+  }
+
+  async function commitTrash(nextTrash) {
+    writing.current = true;
+    setTrash(nextTrash);
+    try { await persistTrash(nextTrash); }
+    finally { setTimeout(() => { writing.current = false; }, 1500); }
+  }
+
+  // the chosen cycle (and, for a custom cycle, its dates) live in meta so they
+  // survive a tab switch and follow the account.
+  const setPeriodMode = (m, range) =>
+    commitMeta({ ...meta, periodMode: m, ...(range ? { periodRange: range } : {}) });
+  const setCustomRange = (range) => commitMeta({ ...meta, periodRange: range });
 
   // lines: [{ item, qty, unitPrice }] — one invoice can carry several items.
   function addOrder(d, location, lines) {
@@ -186,12 +220,67 @@ export default function TrackerPage({ onExit, storeKey }) {
     commitOrders(next, nextMeta);
   }
 
+  // Deleting is a SOFT delete: the invoice moves to the recycle bin (Deleted
+  // tab) so a mis-click or a cleared period can be undone. Purging from the bin
+  // is the only hard delete.
   function removeOrder(d, id) {
+    const gone = (orders[d] || []).find((o) => o.id === id);
     const dayList = (orders[d] || []).filter((o) => o.id !== id);
     const next = { ...orders };
     if (dayList.length) next[d] = dayList;
     else delete next[d];
-    commitOrders(next);
+    const nextTrash = gone
+      ? [{ ...gone, date: d, deletedAt: new Date().toISOString() }, ...trash].slice(0, TRASH_CAP)
+      : null;
+    commitOrders(next, null, nextTrash);
+  }
+
+  // Put a binned invoice back on its original date (appended, so it takes the
+  // next number for that day).
+  function restoreOrder(entry) {
+    const { date: d, deletedAt, ...order } = entry;
+    const dayList = orders[d] || [];
+    if (!dayList.some((o) => o.id === order.id)) {
+      const next = { ...orders, [d]: [...dayList, order] };
+      const earliest = Object.keys(next).sort()[0];
+      const nextMeta = !meta.trackingStart || earliest < meta.trackingStart
+        ? { ...meta, trackingStart: earliest }
+        : null;
+      commitOrders(next, nextMeta, dropFromTrash(entry));
+      return;
+    }
+    commitTrash(dropFromTrash(entry)); // already back — just tidy the bin
+  }
+
+  const dropFromTrash = (entry) =>
+    trash.filter((t) => !(t.id === entry.id && t.deletedAt === entry.deletedAt));
+
+  const purgeOne = (entry) => commitTrash(dropFromTrash(entry));
+  const emptyTrash = () => commitTrash([]);
+
+  // Explicit, user-initiated recovery from this device's local snapshot ring.
+  // (Load never merges — that resurrects deletions; see trackerStorage.js.)
+  function restoreBackup(snap) {
+    const have = new Set(Object.values(orders).flat().map((o) => o.id));
+    const next = { ...orders };
+    let added = 0;
+    for (const [d, list] of Object.entries(snap.orders || {})) {
+      for (const o of list || []) {
+        if (have.has(o.id)) continue;
+        next[d] = [...(next[d] || []), o];
+        added += 1;
+      }
+    }
+    if (!added) return 0;
+    for (const d of Object.keys(next)) {
+      next[d] = [...next[d]].sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+    }
+    const earliest = Object.keys(next).sort()[0];
+    const nextMeta = !meta.trackingStart || earliest < meta.trackingStart
+      ? { ...meta, trackingStart: earliest }
+      : null;
+    commitOrders(next, nextMeta);
+    return added;
   }
 
   function saveSettings(draft) {
@@ -202,21 +291,48 @@ export default function TrackerPage({ onExit, storeKey }) {
     });
   }
 
-  async function clearWeek() {
+  // Clear only the invoices inside the selected period; everything outside it
+  // stays. Cleared invoices go to the recycle bin, not to the void.
+  async function clearPeriod(range) {
+    const kept = {};
+    const removed = [];
+    const now = new Date().toISOString();
+    for (const [d, list] of Object.entries(orders)) {
+      if (range && d >= range.start && d <= range.end) {
+        for (const o of list || []) removed.push({ ...o, date: d, deletedAt: now });
+      } else if (list && list.length) {
+        kept[d] = list;
+      }
+    }
+    if (!removed.length) return;
+    const nextTrash = [...removed, ...trash].slice(0, TRASH_CAP);
+    const remaining = Object.keys(kept).sort();
+    const nextMeta = { ...meta, trackingStart: remaining[0] || todayIso() };
+
     writing.current = true;
+    setOrders(kept);
+    setTrash(nextTrash);
+    setMeta(nextMeta);
     try {
-      await clearOrders();
-      setOrders({});
-      const nextMeta = { ...meta, trackingStart: todayIso() };
-      setMeta(nextMeta);
+      // no orders left at all -> drop the key entirely (as "clear week" did)
+      if (remaining.length) await persistOrders(kept);
+      else await clearOrders();
+      await persistTrash(nextTrash);
       await persistMeta(nextMeta);
-      setTab("daily");
+      if (!remaining.length) setTab("daily");
     } finally {
       setTimeout(() => { writing.current = false; }, 1500);
     }
   }
 
   const dayOrders = orders[date] || [];
+
+  const TABS = [
+    { id: "daily", label: "Daily" },
+    { id: "weekly", label: "Statements" },
+    { id: "trash", label: trash.length ? `Deleted (${trash.length})` : "Deleted" },
+    { id: "settings", label: "Settings" },
+  ];
 
   if (!loaded) {
     return (
@@ -244,13 +360,13 @@ export default function TrackerPage({ onExit, storeKey }) {
       </header>
 
       {/* tabs */}
-      <div className="flex shrink-0 gap-1 border-b border-tcreamDark bg-white px-4">
+      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-tcreamDark bg-white px-2 sm:px-4">
         {TABS.map((tb) => (
           <button
             key={tb.id}
             onClick={() => setTab(tb.id)}
             className={
-              "relative px-4 py-3 text-sm font-semibold transition " +
+              "relative shrink-0 whitespace-nowrap px-3 py-3 text-sm font-semibold transition sm:px-4 " +
               (tab === tb.id ? "text-tnavy" : "text-slate hover:text-tnavy")
             }
           >
@@ -281,10 +397,19 @@ export default function TrackerPage({ onExit, storeKey }) {
           {tab === "weekly" && (
             <WeeklyTab
               rows={rows} settings={settings}
-              periodStart={periodStart} periodEnd={periodEnd}
-              onClearWeek={clearWeek} onRemove={removeOrder} onUpdate={updateOrder}
+              mode={mode} onMode={setPeriodMode}
+              savedRange={meta.periodRange} onCustomRange={setCustomRange}
+              anchor={anchor} firstDate={firstDate} lastDate={lastDate}
+              onClearPeriod={clearPeriod} onRemove={removeOrder} onUpdate={updateOrder}
               signatures={signatures} activeSig={activeSig} activeSigId={activeSigId} onPickSig={setActiveSigId}
               letterhead={activeLetterhead}
+            />
+          )}
+          {tab === "trash" && (
+            <TrashTab
+              trash={trash} settings={settings}
+              onRestore={restoreOrder} onPurge={purgeOne} onEmpty={emptyTrash}
+              onRestoreBackup={restoreBackup}
             />
           )}
           {tab === "settings" && (
@@ -323,19 +448,19 @@ function ReminderBanner({ reminder, buyer, onGo }) {
     return (
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-tgold bg-tgold/15 px-4 py-3">
         <p className="text-sm font-semibold text-tnavy">
-          📌 Week complete — time to send the Weekly Statement to {buyer}.
+          📌 Period {reminder.label} complete — time to send the statement to {buyer}.
         </p>
         <button onClick={onGo} className="rounded-lg bg-tnavy px-4 py-2 text-sm font-semibold text-white hover:bg-tnavy/90">
-          Go to Weekly
+          Go to Statements
         </button>
       </div>
     );
   }
-  const left = 7 - reminder.elapsed;
+  const left = reminder.length - reminder.day + 1;
   return (
     <div className="mb-5 rounded-xl border border-tcreamDark bg-white px-4 py-2.5 text-sm text-slate">
-      Day <b className="text-tnavy">{Math.min(reminder.elapsed + 1, 7)}</b> of 7 ·
-      weekly statement due <b className="text-tnavy">{dateLong(reminder.due)}</b>
+      Day <b className="text-tnavy">{Math.min(Math.max(reminder.day, 1), reminder.length)}</b> of {reminder.length} ·
+      statement due <b className="text-tnavy">{dateLong(reminder.due)}</b>
       {left > 0 ? ` (${left} day${left === 1 ? "" : "s"} left)` : ""}.
     </div>
   );

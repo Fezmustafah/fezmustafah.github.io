@@ -40,7 +40,7 @@ export default function EditInvoice({ row, settings, onSave, onDelete, onClose }
     onClose();
   }
   function del() {
-    if (window.confirm("Delete this invoice? This cannot be undone.")) {
+    if (window.confirm("Delete this invoice? It moves to the Deleted tab and can be restored.")) {
       onDelete(row.date, order.id);
       onClose();
     }

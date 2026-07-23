@@ -107,6 +107,63 @@ describe("tracker sync — deletions are authoritative", () => {
   });
 });
 
+describe("tracker safety net — order snapshots", () => {
+  const two = {
+    "2026-07-01": [{ id: "o1", location: "JVC", qty: 5, amount: 50 }],
+    "2026-07-02": [{ id: "o2", location: "Satwa", qty: 3, amount: 30 }],
+  };
+
+  it("snapshots the old set before a write that removes invoices", async () => {
+    h.local.set(ORDERS_KEY, two);
+    h.cloud.set(ORDERS_KEY, two);
+
+    await store.setOrders(day); // one invoice dropped
+
+    const backups = await store.listBackups();
+    expect(backups).toHaveLength(1);
+    expect(backups[0].count).toBe(2);
+    expect(backups[0].orders).toEqual(two);
+  });
+
+  it("does not snapshot when invoices are added or edited", async () => {
+    h.local.set(ORDERS_KEY, day);
+    await store.setOrders(two); // grew
+    expect(await store.listBackups()).toHaveLength(0);
+  });
+
+  it("snapshots before a clear, and before trusting an emptied cloud", async () => {
+    h.local.set(ORDERS_KEY, two);
+    h.cloud.set(ORDERS_KEY, two);
+    await store.clearOrders();
+    expect((await store.listBackups())[0].count).toBe(2);
+
+    // a device that was offline through the wipe keeps its copy as a snapshot
+    h.local.set(ORDERS_KEY, day);
+    h.local.delete(PENDING_KEY);
+    const { orders } = await store.loadTracker();
+    expect(orders).toEqual({}); // deletion still wins
+    const backups = await store.listBackups();
+    expect(backups[0].orders).toEqual(day); // but the data is recoverable
+  });
+
+  it("keeps snapshots off the cloud", async () => {
+    h.local.set(ORDERS_KEY, two);
+    await store.setOrders(day);
+    expect([...h.cloud.keys()]).not.toContain("tracker-backup");
+  });
+});
+
+describe("tracker recycle bin", () => {
+  it("round-trips the trash list and lets an empty bin stick", async () => {
+    const entry = { id: "o1", date: "2026-07-01", deletedAt: "2026-07-02T10:00:00.000Z", qty: 5, amount: 50 };
+    await store.setTrash([entry]);
+    expect((await store.loadTracker()).trash).toEqual([entry]);
+
+    await store.setTrash([]); // emptied: an empty ARRAY is not a missing key
+    expect((await store.loadTracker()).trash).toEqual([]);
+  });
+});
+
 describe("tracker sync — offline edits are not lost", () => {
   it("buffers a failed write and pushes it to the cloud on next load", async () => {
     h.flags.failWrite = true;

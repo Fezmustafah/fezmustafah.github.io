@@ -18,8 +18,12 @@ import { DEFAULT_SETTINGS, DEFAULT_VAT_RATE, isTemplate, isLayout } from "./cons
 
 const ORDERS_KEY = "tracker-orders"; // { [isoDate]: Order[] }
 const SETTINGS_KEY = "tracker-settings"; // { seller, buyer, items, vatRate, header }
-const META_KEY = "tracker-meta"; // { trackingStart: isoDate }
+const META_KEY = "tracker-meta"; // { trackingStart: isoDate, periodMode }
+const TRASH_KEY = "tracker-trash"; // [{ ...order, date, deletedAt }] — recycle bin
 const PENDING_KEY = "tracker-pending"; // { [key]: "write" | "delete" } — local-only
+const BACKUP_KEY = "tracker-backup"; // [{ at, reason, count, orders }] — LOCAL-ONLY safety net
+
+const BACKUP_RING = 8; // how many order snapshots this device keeps
 
 const useCloud = () => cloudEnabled && !!getUserId();
 
@@ -64,6 +68,36 @@ async function markPending(key, op) {
 async function clearPending(key) {
   const p = await getPending();
   if (key in p) { delete p[key]; await set(PENDING_KEY, p); }
+}
+
+// ---- local order snapshots: the last line of defence against a lost week ----
+// Deletions are deliberate and must stick (see the cloud-authoritative note
+// above), so the tracker never resurrects orders by itself. But a wipe should
+// still be UNDOABLE by the person who made it — so every time this device is
+// about to lose orders (a delete, a period clear, or a cloud that has gone
+// empty while this device still holds data) the previous set is snapshotted
+// into a LOCAL-ONLY ring. Never uploaded, never auto-cleared, never merged on
+// load: the Deleted tab offers it as an explicit, user-initiated restore.
+export function countOrders(orders) {
+  return Object.values(orders || {}).reduce((n, list) => n + (list ? list.length : 0), 0);
+}
+
+async function snapshotOrders(orders, reason) {
+  const count = countOrders(orders);
+  if (!count) return;
+  const ring = (await get(BACKUP_KEY)) || [];
+  if (ring[0] && ring[0].count === count && JSON.stringify(ring[0].orders) === JSON.stringify(orders)) return;
+  ring.unshift({ at: new Date().toISOString(), reason, count, orders });
+  await set(BACKUP_KEY, ring.slice(0, BACKUP_RING));
+}
+
+export async function listBackups() {
+  return (await get(BACKUP_KEY)) || [];
+}
+
+export async function deleteBackup(at) {
+  const ring = (await get(BACKUP_KEY)) || [];
+  await set(BACKUP_KEY, ring.filter((b) => b.at !== at));
 }
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -153,7 +187,11 @@ async function resolveKey(key, seedFromLocal) {
       try { await cloudSet(key, local); } catch {}
       return local;
     }
-    await del(key); // cloud is empty and we trust it — clear the stale cache
+    // Cloud is empty and we trust it. Before dropping this device's copy, keep
+    // a local snapshot — this is the case where a device that has been offline
+    // since a wipe is holding the only surviving copy of those invoices.
+    if (key === ORDERS_KEY && local && countOrders(local)) await snapshotOrders(local, "cleared on another device");
+    await del(key); // clear the stale cache
     return undefined;
   }
   await set(key, cloud); // refresh local cache to match the cloud
@@ -164,7 +202,11 @@ export async function loadTracker() {
   const orders = (await resolveKey(ORDERS_KEY, false)) || {};
   const settings = await resolveKey(SETTINGS_KEY, true);
   const meta = (await resolveKey(META_KEY, true)) || {};
-  return { orders, settings: normalizeSettings(settings), meta };
+  // trash seeds from local when the cloud has never seen it (first load after
+  // this feature shipped); an EMPTY array on the cloud is a real "emptied bin"
+  // and is not a missing key, so emptying still sticks across devices.
+  const trash = (await resolveKey(TRASH_KEY, true)) || [];
+  return { orders, settings: normalizeSettings(settings), meta, trash };
 }
 
 // ---- writes (optimistic local mirror; pending buffer on cloud failure) ----
@@ -182,8 +224,21 @@ async function deleteKey(key) {
   catch (e) { await markPending(key, "delete"); console.warn("[tracker] cloud delete failed, will retry on next load:", e.message); }
 }
 
-export const setOrders = (orders) => writeKey(ORDERS_KEY, orders);
-export const clearOrders = () => deleteKey(ORDERS_KEY);
+// Snapshot first whenever a write would REMOVE invoices (edits and additions
+// don't shrink the set, so they cost nothing).
+export async function setOrders(orders) {
+  const prev = await get(ORDERS_KEY);
+  if (prev && countOrders(prev) > countOrders(orders)) await snapshotOrders(prev, "before delete");
+  return writeKey(ORDERS_KEY, orders);
+}
+
+export async function clearOrders() {
+  const prev = await get(ORDERS_KEY);
+  if (prev) await snapshotOrders(prev, "before clear");
+  return deleteKey(ORDERS_KEY);
+}
+
+export const setTrash = (trash) => writeKey(TRASH_KEY, trash);
 export const saveSettings = (settings) => writeKey(SETTINGS_KEY, settings);
 export const setMeta = (meta) => writeKey(META_KEY, meta);
 

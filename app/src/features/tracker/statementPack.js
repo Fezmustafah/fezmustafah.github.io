@@ -13,9 +13,9 @@ import { buildInvoice } from "./invoicePdf.js";
 
 // rows are already in statement order (matches the statement's line numbering /
 // invoice numbers).
-export function buildStatementPackDoc({ rows, settings, periodStart, periodEnd, sig, letterhead }) {
+export function buildStatementPackDoc({ rows, settings, periodStart, periodEnd, sig, letterhead, title }) {
   const doc = newDoc(); // starts on a blank page 1
-  buildWeekly({ rows, settings, periodStart, periodEnd, sig, letterhead, doc });
+  buildWeekly({ rows, settings, periodStart, periodEnd, sig, letterhead, title, doc });
   for (const r of rows) {
     doc.addPage();
     buildInvoice({ order: r.order, date: r.date, index: r.index, settings, sig, letterhead, doc });
@@ -27,5 +27,5 @@ export function downloadStatementPack(args) {
   const doc = buildStatementPackDoc(args);
   const start = args.periodStart.replace(/-/g, "");
   const end = args.periodEnd.replace(/-/g, "");
-  doc.save(`BAM-SoA-${start}-${end}.pdf`);
+  doc.save(start === end ? `BAM-SoA-${start}.pdf` : `BAM-SoA-${start}-${end}.pdf`);
 }
